@@ -1,0 +1,13 @@
+[Unit]
+Description=Diode UDP receiver (DMZ mirror)
+After=network.target influxdb.service
+
+[Service]
+EnvironmentFile=/etc/diode/recv.env
+ExecStart=/usr/bin/python3 /opt/diode/diode_recv.py
+SyslogIdentifier=diode-recv
+Restart=always
+User=nobody
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Diode UDP sender (OT historian)
+After=network.target influxdb.service
+
+[Service]
+EnvironmentFile=/etc/diode/send.env
+ExecStart=/usr/bin/python3 /opt/diode/diode_send.py
+SyslogIdentifier=diode-send
+StateDirectory=diode
+Restart=always
+User=nobody
+
+[Install]
+WantedBy=multi-user.target

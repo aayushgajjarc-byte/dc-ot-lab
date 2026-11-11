@@ -1,0 +1,91 @@
+<!--
+  OT security lab: custom decoders (Wazuh 4.14).
+  Install to /var/ossec/etc/decoders/ on the manager.
+
+  Sources
+    fw-l1        iptables NFLOG lines (ulogd2 -> rsyslog, tag "fw-l1-nflog"), prefixes MODBUS-BLOCK / FW-DENY
+    diode-recv   DMZ mirror receiver log (journald, via the Wazuh agent)
+    diode-send   historian sender log (journald, via rsyslog)
+    grafana-log  /var/log/grafana/grafana.log (Wazuh agent on grafana-it)
+  pfSense lines are decoded by Wazuh's built-in "pf" decoder (program filterlog), no custom decoder needed.
+-->
+
+<!-- ===== fw-l1: lines like
+Nov 10 12:00:01 fw-l1 fw-l1-nflog: Nov 10 12:00:01 fw-l1 MODBUS-BLOCK: IN=eth1 OUT=eth0 MAC=.. SRC=192.168.72.10 DST=192.168.71.10 LEN=60 .. PROTO=TCP SPT=49324 DPT=502 WINDOW=63 RES=0x00 ACK PSH URGP=0
+===== -->
+<decoder name="ot-fw">
+  <program_name>^fw-l1-nflog</program_name>
+</decoder>
+
+<decoder name="ot-fw-ports">
+  <parent>ot-fw</parent>
+  <regex type="pcre2">(MODBUS-BLOCK|FW-DENY):\s+IN=\S* OUT=\S* .*?SRC=(\S+) DST=(\S+) .*?PROTO=(\w+) SPT=(\d+) DPT=(\d+)</regex>
+  <order>action,srcip,dstip,protocol,srcport,dstport</order>
+</decoder>
+
+<decoder name="ot-fw-noports">
+  <parent>ot-fw</parent>
+  <regex type="pcre2">(MODBUS-BLOCK|FW-DENY):\s+IN=\S* OUT=\S* .*?SRC=(\S+) DST=(\S+) .*?PROTO=(\w+)</regex>
+  <order>action,srcip,dstip,protocol</order>
+</decoder>
+
+<!-- ===== diode receiver (mirror-dmz). Journald lines look like
+Nov 10 20:12:18 mirror-dmz diode-recv[321]: 2026-11-10 20:12:18 REJECTED datagram from 192.168.74.77: bad mac
+===== -->
+<decoder name="diode-recv">
+  <prematch type="pcre2">^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (?:REJECTED datagram|sequence gap|sequence went backwards|mirror write failed|stats write failed|summary:|first valid datagram|diode_recv:)</prematch>
+</decoder>
+
+<decoder name="diode-recv-rejected">
+  <parent>diode-recv</parent>
+  <regex type="pcre2">REJECTED datagram from (\S+): (.+)$</regex>
+  <order>srcip,reason</order>
+</decoder>
+
+<decoder name="diode-recv-gap">
+  <parent>diode-recv</parent>
+  <regex type="pcre2">sequence gap: expected (\d+) got (\d+) \((\d+) lost\)</regex>
+  <order>expected_seq,got_seq,lost</order>
+</decoder>
+
+<!-- ===== diode sender (influx-l3). Lines like
+Nov 10 20:12:18 influx-l3 diode-send[1303]: 2026-11-10 20:12:18 send failed ([Errno 101] Network is unreachable)
+===== -->
+<decoder name="diode-send">
+  <prematch type="pcre2">^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (?:historian query failed|send failed|skipping \d+ s of old data|sent \d+ points|diode_send:)</prematch>
+</decoder>
+
+<!-- ===== Grafana (logfmt), e.g.
+logger=context userId=0 orgId=0 uname= t=2026-11-10T20:00:00.123456789Z level=warn msg="Invalid username or password" error="..." remote_addr=192.168.75.50
+===== -->
+<decoder name="grafana-log">
+  <prematch type="pcre2">^logger=\S+ </prematch>
+</decoder>
+
+<decoder name="grafana-log-addr">
+  <parent>grafana-log</parent>
+  <regex type="pcre2">remote_addr=(\S+)</regex>
+  <order>srcip</order>
+</decoder>
+
+<!-- ===== pfSense filterlog WITHOUT a hostname =====
+pfSense forwards BSD syslog as "Nov 11 09:05:40 filterlog[33080]: 1,96,,..." (no hostname). Wazuh's pre-decoder
+then takes "filterlog[33080]:" as the hostname, the built-in "pf" decoder never matches, and the decoder sees
+only the CSV body. These decoders match that CSV body directly (IPv4 only).
+Fields: rule,subrule,anchor,tracker,interface,reason,action,direction,4,tos,ecn,ttl,id,offset,flags,protoid,proto,length,src,dst[,sport,dport]
+===== -->
+<decoder name="pf-nohost">
+  <prematch type="pcre2">^(?:filterlog\[\d+\]:\s*)?\d+,\d*,[^,]*,\d+,[\w.]+,\w+,(?:block|pass),(?:in|out),4,</prematch>
+</decoder>
+
+<decoder name="pf-nohost-ports">
+  <parent>pf-nohost</parent>
+  <regex type="pcre2">^(?:filterlog\[\d+\]:\s*)?\d+,\d*,[^,]*,\d+,([\w.]+),\w+,(block|pass),(in|out),4,(?:[^,]*,){6}\d+,(tcp|udp),\d+,([\d.]+),([\d.]+),(\d+),(\d+)</regex>
+  <order>interface,action,direction,protocol,srcip,dstip,srcport,dstport</order>
+</decoder>
+
+<decoder name="pf-nohost-noports">
+  <parent>pf-nohost</parent>
+  <regex type="pcre2">^(?:filterlog\[\d+\]:\s*)?\d+,\d*,[^,]*,\d+,([\w.]+),\w+,(block|pass),(in|out),4,(?:[^,]*,){6}\d+,(\w+),\d+,([\d.]+),([\d.]+)</regex>
+  <order>interface,action,direction,protocol,srcip,dstip</order>
+</decoder>

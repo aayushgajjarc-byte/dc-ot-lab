@@ -1,0 +1,1420 @@
+{
+  "uid": "dc-it-mirror",
+  "title": "Data Centre - IT view (DMZ mirror)",
+  "tags": [
+    "ot-lab",
+    "dmz",
+    "it"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Data centre (read from the DMZ mirror, not from OT)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "gauge",
+      "title": "Outside",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 6
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -2m)\n  |> filter(fn: (r) => r._measurement == \"dc_temp\" and r.room == \"outside\" and r._field == \"value\")\n  |> last()\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "min": 15,
+          "max": 40,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 26
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      }
+    },
+    {
+      "id": 3,
+      "type": "gauge",
+      "title": "Admin room",
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 6
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -2m)\n  |> filter(fn: (r) => r._measurement == \"dc_temp\" and r.room == \"admin\" and r._field == \"value\")\n  |> last()\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "min": 15,
+          "max": 40,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 26
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      }
+    },
+    {
+      "id": 4,
+      "type": "gauge",
+      "title": "Reception",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 6
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -2m)\n  |> filter(fn: (r) => r._measurement == \"dc_temp\" and r.room == \"reception\" and r._field == \"value\")\n  |> last()\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "min": 15,
+          "max": 40,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 26
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      }
+    },
+    {
+      "id": 5,
+      "type": "gauge",
+      "title": "Server room",
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 6
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -2m)\n  |> filter(fn: (r) => r._measurement == \"dc_temp\" and r.room == \"server\" and r._field == \"value\")\n  |> last()\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "min": 15,
+          "max": 40,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 26
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Temperatures",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"dc_temp\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"room\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"_time\", \"outside\", \"admin\", \"reception\", \"server\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Electrical power",
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "description": "Room loads, server HVAC electrical power and total facility power. Office hours (sim 09:00-18:00) show as the high plateau.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"dc_power\" and r._field == \"kw\" and (r.kind == \"load\" or r.kind == \"hvac_electrical\" or r.kind == \"total\"))\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"room\", \"kind\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"_time\", \"admin_load\", \"reception_load\", \"server_load\", \"server_hvac_electrical\", \"facility_total\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "state-timeline",
+      "title": "Alarms, interlock and HVAC state",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 7
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"dc_state\" and (r._field == \"alarm_warn\" or r._field == \"alarm_crit\" or r._field == \"interlock\" or r._field == \"hvac_running\" or r._field == \"manual_mode\" or r._field == \"office_hours\"))\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> map(fn: (r) => ({r with _value: if r._value then 1 else 0}))\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"_time\", \"alarm_warn\", \"alarm_crit\", \"interlock\", \"hvac_running\", \"manual_mode\", \"office_hours\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alarm_warn"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "ok",
+                        "color": "#2d3a45",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "WARNING",
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alarm_crit"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "ok",
+                        "color": "#2d3a45",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "CRITICAL",
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "interlock"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "off",
+                        "color": "#2d3a45",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "INTERLOCK",
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "hvac_running"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "idle",
+                        "color": "#2d3a45",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "running",
+                        "color": "green",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "manual_mode"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "auto",
+                        "color": "#2d3a45",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "MANUAL",
+                        "color": "purple",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "office_hours"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "after hrs",
+                        "color": "#2d3a45",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "office hrs",
+                        "color": "blue",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "rowHeight": 0.85,
+        "alignValue": "left",
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "One-way UDP link health (the DMZ receiver's own statistics)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Link status",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 3,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "description": "LIVE when the receiver wrote its statistics in the last 15 seconds.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -10m)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and r._field == \"received\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _value: float(v: int(v: now()) - int(v: r._time)) / 1000000000.0}))\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "range",
+              "options": {
+                "from": 0,
+                "to": 15,
+                "result": {
+                  "text": "LIVE",
+                  "color": "green",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 15,
+                "to": 100000000,
+                "result": {
+                  "text": "STALE",
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "noValue": "NO DATA",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Sim data age",
+      "gridPos": {
+        "x": 3,
+        "y": 24,
+        "w": 3,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "description": "Age of the newest temperature point in the mirror. Expect about 3-9 s: sender interval (5 s) + 2 s lag + transport.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -10m)\n  |> filter(fn: (r) => r._measurement == \"dc_temp\" and r.room == \"server\" and r._field == \"value\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _value: float(v: int(v: now()) - int(v: r._time)) / 1000000000.0}))\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 15
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Delivery ratio (selected range)",
+      "gridPos": {
+        "x": 6,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "description": "received / (received + lost) datagrams over the dashboard time range.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and (r._field == \"received\" or r._field == \"lost\"))\n  |> increase()\n  |> last()\n  |> group()\n  |> pivot(rowKey: [\"_measurement\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_time: now(), _value: if float(v: r.received) + float(v: r.lost) > 0.0 then float(v: r.received) / (float(v: r.received) + float(v: r.lost)) * 100.0 else 100.0}))\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 3,
+          "min": 0,
+          "max": 100,
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 95
+              },
+              {
+                "color": "green",
+                "value": 99
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Delivery ratio (last 24 h)",
+      "gridPos": {
+        "x": 10,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "description": "Same ratio over the last 24 hours, independent of the dashboard time range.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and (r._field == \"received\" or r._field == \"lost\"))\n  |> increase()\n  |> last()\n  |> group()\n  |> pivot(rowKey: [\"_measurement\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_time: now(), _value: if float(v: r.received) + float(v: r.lost) > 0.0 then float(v: r.received) / (float(v: r.received) + float(v: r.lost)) * 100.0 else 100.0}))\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 3,
+          "min": 0,
+          "max": 100,
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 95
+              },
+              {
+                "color": "green",
+                "value": 99
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Datagrams received",
+      "gridPos": {
+        "x": 14,
+        "y": 24,
+        "w": 2,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and r._field == \"received\")\n  |> increase()\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Datagrams lost",
+      "gridPos": {
+        "x": 16,
+        "y": 24,
+        "w": 2,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and r._field == \"lost\")\n  |> increase()\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Rejected (forged/invalid)",
+      "gridPos": {
+        "x": 18,
+        "y": 24,
+        "w": 2,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and r._field == \"rejected\")\n  |> increase()\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "Mirror write errors",
+      "gridPos": {
+        "x": 20,
+        "y": 24,
+        "w": 2,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and r._field == \"write_errors\")\n  |> increase()\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "Points delivered",
+      "gridPos": {
+        "x": 22,
+        "y": 24,
+        "w": 2,
+        "h": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and r._field == \"points\")\n  |> increase()\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Datagrams per 30 s",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 10,
+        "h": 8
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "description": "Received, lost and rejected datagrams in each 30 s window (counters are differenced; receiver restarts are handled).",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and (r._field == \"received\" or r._field == \"lost\" or r._field == \"rejected\"))\n  |> aggregateWindow(every: 30s, fn: last, createEmpty: false)\n  |> difference(nonNegative: true)\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"_time\", \"received\", \"lost\", \"rejected\"])\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "received"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lost"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rejected"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Datagram loss per 30 s",
+      "gridPos": {
+        "x": 10,
+        "y": 28,
+        "w": 7,
+        "h": 8
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and (r._field == \"received\" or r._field == \"lost\"))\n  |> aggregateWindow(every: 30s, fn: last, createEmpty: false)\n  |> difference(nonNegative: true)\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> map(fn: (r) => ({_time: r._time, loss_percent: if float(v: r.received) + float(v: r.lost) > 0.0 then float(v: r.lost) / (float(v: r.received) + float(v: r.lost)) * 100.0 else 0.0}))\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Points delivered per second",
+      "gridPos": {
+        "x": 17,
+        "y": 28,
+        "w": 7,
+        "h": 8
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "description": "The Node-RED historian writes about 13 points per second, so the mirror should show the same rate.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "dmz-mirror"
+          },
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"diode_stats\" and r._field == \"points\")\n  |> aggregateWindow(every: 30s, fn: last, createEmpty: false)\n  |> difference(nonNegative: true)\n  |> map(fn: (r) => ({_time: r._time, points_per_second: float(v: r._value) / 30.0}))\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "text",
+      "title": "How to read this",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "dmz-mirror"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**This dashboard reads only the DMZ mirror.** The IT side has no connection to the OT network: the data arrives over **UDP port 8094**, one way, through pfSense (stateless rule, no return path). UDP has no retransmission, so every lost datagram is counted using sequence numbers.\n\n* **Delivery ratio** close to 100 % over hours is the evidence that the one-way link is reliable enough to use.\n* **Rejected** should stay 0. It rises if something in the DMZ sends forged or malformed datagrams (bad HMAC, bad CRC, disallowed measurement).\n* **Lost** rising and then staying flat is a gap that is **never back-filled**, by design of a one-way link.\n* Counters restart from zero when the receiver restarts; the ratios here handle that.",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        }
+      }
+    }
+  ]
+}

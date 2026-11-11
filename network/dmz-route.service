@@ -1,0 +1,16 @@
+# Routes from the OT side (historian, fw-l1) to the DMZ and SOC through pfSense.
+# Install: /etc/systemd/system/dmz-route.service, then: systemctl daemon-reload && systemctl enable --now dmz-route
+# On fw-l1 keep only the 192.168.76.0/24 line.
+[Unit]
+Description=Routes to DMZ and SOC via pfSense
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ip route replace 192.168.74.0/24 via 192.168.73.3
+ExecStart=/sbin/ip route replace 192.168.76.0/24 via 192.168.73.3
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

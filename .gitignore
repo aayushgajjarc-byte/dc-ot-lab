@@ -1,0 +1,20 @@
+# Secrets: real environment files, tokens and keys never go in the repo
+*.env
+!*.env.example
+*.key
+*.pem
+secrets/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Diode sender state
+send_state.json
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/
+*.swp

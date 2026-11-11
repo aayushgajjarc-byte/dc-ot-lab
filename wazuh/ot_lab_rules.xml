@@ -1,0 +1,238 @@
+<!--
+  OT security lab: custom rules (Wazuh 4.14). Rule IDs 100100-100599 are used.
+  Install to /var/ossec/etc/rules/ on the manager. Filter in the dashboard with:  rule.groups: ot_lab
+
+  Adjust the zone addresses if yours differ:
+    OT  192.168.71.0/24 (L1)  192.168.72.0/24 (L2)  192.168.73.0/24 (L3)   (192.168.70.0/22 covers all three)
+    DMZ 192.168.74.0/24       IT 192.168.75.0/24    SOC 192.168.76.0/24
+    Authorised Modbus client (Node-RED HMI): 192.168.72.10
+-->
+
+<group name="ot_lab,">
+
+  <!-- ================= fw-l1 (iptables, NFLOG) ================= -->
+  <rule id="100100" level="0">
+    <decoded_as>ot-fw</decoded_as>
+    <description>OT internal firewall (fw-l1): logged packet.</description>
+    <group>ot_fw,</group>
+  </rule>
+
+  <!-- Modbus blocks. Two independent rules with opposite conditions, so one log line can match only one:
+       100101 = source is the authorised HMI (dangerous function code), 100105 = any OTHER source. -->
+  <rule id="100101" level="10">
+    <if_sid>100100</if_sid>
+    <action>MODBUS-BLOCK</action>
+    <match>SRC=192.168.72.10 </match>
+    <description>Dangerous Modbus request from the HMI $(srcip) to $(dstip):$(dstport) blocked by fw-l1.</description>
+    <group>ot_modbus_block,</group>
+  </rule>
+
+  <rule id="100105" level="12">
+    <if_sid>100100</if_sid>
+    <action>MODBUS-BLOCK</action>
+    <match negate="yes">SRC=192.168.72.10 </match>
+    <description>Modbus traffic to the PLC from unauthorised host $(srcip) blocked by fw-l1.</description>
+    <group>ot_modbus_block,ot_unauthorised_source,</group>
+  </rule>
+
+  <rule id="100102" level="13" frequency="5" timeframe="60" ignore="120">
+    <if_matched_group>ot_modbus_block</if_matched_group>
+    <same_source_ip />
+    <description>Repeated blocked Modbus requests from $(srcip): possible attack on the PLC.</description>
+    <mitre>
+      <id>T1498</id>
+    </mitre>
+    <group>ot_modbus_block,ot_attack,</group>
+  </rule>
+
+  <rule id="100103" level="8">
+    <if_sid>100100</if_sid>
+    <action>FW-DENY</action>
+    <description>Cross-zone traffic from $(srcip) to $(dstip) ($(protocol)/$(dstport)) dropped by fw-l1.</description>
+    <group>ot_cross_zone_deny,</group>
+  </rule>
+
+  <rule id="100104" level="11" frequency="10" timeframe="60" ignore="120">
+    <if_matched_sid>100103</if_matched_sid>
+    <same_source_ip />
+    <description>Repeated cross-zone attempts from $(srcip) dropped by fw-l1: possible scan or pivot.</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+    <group>ot_cross_zone_deny,ot_attack,</group>
+  </rule>
+
+  <!-- ================= pfSense =================
+       100199 = block decoded by OUR pf-nohost decoder (pfSense sends no hostname). 87701 = Wazuh built-in pf block
+       rule, used if pfSense ever sends a hostname. The zone rules below hang off both. -->
+  <rule id="100199" level="5">
+    <decoded_as>pf-nohost</decoded_as>
+    <action>block</action>
+    <description>pfSense blocked $(protocol) $(srcip) to $(dstip) on $(interface).</description>
+    <group>ot_pfsense,firewall_drop,</group>
+  </rule>
+
+  <rule id="100200" level="11">
+    <if_sid>87701, 100199</if_sid>
+    <match>,tcp,</match>
+    <srcip>192.168.73.0/24</srcip>
+    <dstip>192.168.74.0/24</dstip>
+    <description>TCP attempt from OT $(srcip) to the DMZ $(dstip):$(dstport) across the one-way link, blocked by pfSense.</description>
+    <group>ot_pfsense,ot_diode_violation,</group>
+  </rule>
+
+  <rule id="100201" level="12">
+    <if_sid>87701, 100199</if_sid>
+    <srcip>192.168.74.0/24</srcip>
+    <dstip>192.168.70.0/22</dstip>
+    <description>DMZ host $(srcip) tried to reach OT $(dstip):$(dstport), blocked by pfSense.</description>
+    <group>ot_pfsense,ot_diode_violation,ot_attack,</group>
+  </rule>
+
+  <rule id="100202" level="10">
+    <if_sid>87701, 100199</if_sid>
+    <srcip>192.168.75.0/24</srcip>
+    <dstip>192.168.70.0/22</dstip>
+    <description>IT host $(srcip) tried to reach OT $(dstip):$(dstport), blocked by pfSense.</description>
+    <group>ot_pfsense,ot_attack,</group>
+  </rule>
+
+  <rule id="100203" level="10">
+    <if_sid>87701, 100199</if_sid>
+    <srcip>192.168.76.0/24</srcip>
+    <description>SOC host $(srcip) initiated blocked traffic to $(dstip): the SOC must not initiate connections.</description>
+    <group>ot_pfsense,</group>
+  </rule>
+
+  <rule id="100209" level="8">
+    <if_sid>87701, 100199</if_sid>
+    <srcip>192.168.0.0/16</srcip>
+    <dstip>192.168.0.0/16</dstip>
+    <description>pfSense blocked traffic between lab zones: $(srcip) to $(dstip):$(dstport).</description>
+    <group>ot_pfsense,ot_cross_zone_deny,</group>
+  </rule>
+
+  <rule id="100210" level="13" frequency="3" timeframe="300" ignore="300">
+    <if_matched_sid>100200</if_matched_sid>
+    <same_source_ip />
+    <description>Repeated TCP attempts from OT host $(srcip) across the one-way link.</description>
+    <group>ot_pfsense,ot_diode_violation,ot_attack,</group>
+  </rule>
+
+  <!-- pfSense web login (adjust the wording to your pfSense version with wazuh-logtest) -->
+  <rule id="100220" level="8">
+    <program_name>^php-fpm|^php</program_name>
+    <regex type="pcre2">(?i)authentication error|failed login</regex>
+    <description>pfSense web interface login failure.</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>ot_pfsense,authentication_failed,</group>
+  </rule>
+
+  <rule id="100221" level="5">
+    <program_name>^php-fpm|^php</program_name>
+    <regex type="pcre2">(?i)successful login</regex>
+    <description>pfSense web interface login.</description>
+    <group>ot_pfsense,authentication_success,</group>
+  </rule>
+
+  <rule id="100222" level="11" frequency="5" timeframe="120" ignore="300">
+    <if_matched_sid>100220</if_matched_sid>
+    <description>Multiple pfSense web login failures.</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>ot_pfsense,authentication_failures,</group>
+  </rule>
+
+  <!-- ================= diode receiver (mirror-dmz) ================= -->
+  <rule id="100400" level="0">
+    <decoded_as>diode-recv</decoded_as>
+    <description>Diode receiver log.</description>
+    <group>ot_diode,</group>
+  </rule>
+
+  <rule id="100401" level="12">
+    <if_sid>100400</if_sid>
+    <match>REJECTED datagram</match>
+    <description>Forged or malformed datagram rejected by the diode receiver (from $(srcip): $(reason)).</description>
+    <group>ot_diode,ot_attack,</group>
+  </rule>
+
+  <rule id="100402" level="8">
+    <if_sid>100400</if_sid>
+    <match>sequence gap</match>
+    <description>One-way link lost $(lost) datagram(s) (expected $(expected_seq), got $(got_seq)).</description>
+    <group>ot_diode,ot_diode_loss,</group>
+  </rule>
+
+  <rule id="100403" level="11" frequency="3" timeframe="300" ignore="300">
+    <if_matched_sid>100402</if_matched_sid>
+    <description>The one-way link keeps losing datagrams (3 gaps in 5 minutes).</description>
+    <group>ot_diode,ot_diode_loss,</group>
+  </rule>
+
+  <rule id="100404" level="9">
+    <if_sid>100400</if_sid>
+    <match>mirror write failed</match>
+    <description>Diode receiver cannot write to the mirror database: data is being dropped.</description>
+    <group>ot_diode,</group>
+  </rule>
+
+  <!-- ================= diode sender (influx-l3) ================= -->
+  <rule id="100450" level="0">
+    <decoded_as>diode-send</decoded_as>
+    <description>Diode sender log.</description>
+    <group>ot_diode,</group>
+  </rule>
+
+  <rule id="100451" level="8">
+    <if_sid>100450</if_sid>
+    <match>historian query failed</match>
+    <description>Diode sender cannot read the OT historian.</description>
+    <group>ot_diode,</group>
+  </rule>
+
+  <rule id="100452" level="9">
+    <if_sid>100450</if_sid>
+    <match>send failed</match>
+    <description>Diode sender cannot send UDP towards the DMZ (route or pfSense problem).</description>
+    <group>ot_diode,ot_diode_loss,</group>
+  </rule>
+
+  <rule id="100453" level="7">
+    <if_sid>100450</if_sid>
+    <match>skipping</match>
+    <description>Diode sender was down and skipped old data: a gap that will not be back-filled.</description>
+    <group>ot_diode,ot_diode_loss,</group>
+  </rule>
+
+  <!-- ================= Grafana (grafana-it agent) ================= -->
+  <rule id="100500" level="0">
+    <decoded_as>grafana-log</decoded_as>
+    <description>Grafana log.</description>
+    <group>ot_grafana,</group>
+  </rule>
+
+  <rule id="100501" level="8">
+    <if_sid>100500</if_sid>
+    <regex type="pcre2">Invalid username or password|client=auth\.client\.form.*level=(?:warn|error)|level=(?:warn|error).*client=auth\.client\.form</regex>
+    <description>Grafana login failure from $(srcip).</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>ot_grafana,authentication_failed,</group>
+  </rule>
+
+  <rule id="100502" level="11" frequency="5" timeframe="120" ignore="300">
+    <if_matched_sid>100501</if_matched_sid>
+    <same_source_ip />
+    <description>Multiple Grafana login failures from $(srcip): possible password guessing.</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>ot_grafana,authentication_failures,</group>
+  </rule>
+
+</group>
