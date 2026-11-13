@@ -72,6 +72,15 @@
     <group>ot_pfsense,firewall_drop,</group>
   </rule>
 
+  <!-- DHCP discover broadcasts (0.0.0.0:68 -> 255.255.255.255:67) hit pfSense's default block rule every
+       minute from any guest left on DHCP. Silence them here (level 0); fix the guest's NIC as well. -->
+  <rule id="100198" level="0">
+    <if_sid>100199</if_sid>
+    <match>,0.0.0.0,255.255.255.255,68,67,</match>
+    <description>pfSense blocked a DHCP discover broadcast (ignored).</description>
+    <group>ot_pfsense,</group>
+  </rule>
+
   <rule id="100200" level="11">
     <if_sid>87701, 100199</if_sid>
     <match>,tcp,</match>

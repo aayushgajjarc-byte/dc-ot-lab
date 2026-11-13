@@ -1142,6 +1142,7 @@ Custom IDs are in the 100100-100599 range and every rule is in group `ot_lab`.
 | 100102 | 13 | 5 Modbus blocks from one source in 60 s (MITRE T1498) | `fw-l1` |
 | 100103 | 8 | Other cross-zone traffic dropped (`FW-DENY`) | `fw-l1` |
 | 100104 | 11 | 10 cross-zone drops from one source in 60 s: scan or pivot (T1046) | `fw-l1` |
+| 100198 | 0 | DHCP discover broadcast blocked by pfSense: silenced | pfSense |
 | 100199 | 5 | Any pfSense block (base rule for the hostname-less format) | pfSense |
 | 100200 | 11 | TCP from OT to the DMZ: someone tried to use the one-way link the wrong way | pfSense |
 | 100201 | 12 | DMZ host tried to reach OT | pfSense |
@@ -1430,6 +1431,7 @@ The code lives in the repository; this table maps each component to its file.
 | logtest matches the FreePBX decoder | A line copied from `archives.log` still has Wazuh's own `2026 Nov 11 ... host->ip` prefix | Paste only the original syslog line |
 | HMI Modbus blocks sometimes show as 100105 "unauthorised host" | Older rules: frequency-rule fallback to a level-ordered parent (see 7.7) | Use the current `ot_lab_rules.xml` (`grep -c 'negate="yes"' /var/ossec/etc/rules/ot_lab_rules.xml` prints 1) |
 | `FW-DENY` lines for historian traffic to `192.168.76.10` or to the internet | The historian has no route to the SOC via pfSense (it hairpins through `fw-l1`), or a temporary NIC is still configured | Add `192.168.76.0/24 via 192.168.73.3` (Step 17) and remove temporary NICs |
+| A pfSense block from `0.0.0.0` to `255.255.255.255` (UDP 68 to 67) appears every minute | A guest on that segment has a NIC set to DHCP; pfSense runs no DHCP server there, so the client retries forever and the default block rule logs each try | Rule 100198 silences it in Wazuh. Find the guest: the `vtnetN` in the log is the pfSense interface (**Interfaces > Assignments**), and **Diagnostics > Packet Capture** on it, port 67, shows the client's MAC. Give that NIC a static address or remove it |
 | `chronyc sources` shows `#? PHC0` with Reach 0 | chrony has only just started | Wait 15 s; it should show `#* PHC0` |
 
 ---
