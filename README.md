@@ -61,7 +61,8 @@ OT hosts only ever **send** to IT (UDP data and UDP syslog). Agents run only on 
 |---|---|
 | L0 to L4 | Built and verified in the lab |
 | L5 Wazuh | Built. Modbus-block and pfSense detections confirmed with live events; diode, Grafana and pfSense-login rules validated offline |
-| Next | Auto-start units for the simulator and firewall, Suricata/Zeek with a Modbus parser, a Kali attacker VM |
+| Ops | Reboot resilience and a one-command health check (`tests/lab_health.sh`) |
+| Next | Suricata/Zeek with a Modbus parser, a Kali attacker VM |
 
 ## Getting started
 
@@ -79,6 +80,7 @@ Requirements: Proxmox VE 8 (one node works; two nodes are used here), a Debian 1
 | Grafana IT dashboard | [Step 16](docs/GUIDE.md#step-16-l4-the-it-dashboard-grafana-on-pc1) |
 | Wazuh SOC, log forwarding, decoders and rules | [Steps 17-19](docs/GUIDE.md#step-17-l5-the-wazuh-soc-vm-on-pc1) |
 | Time synchronisation | [Step 20](docs/GUIDE.md#step-20-time-synchronisation-and-time-zones) |
+| Reboot resilience and health check | [Step 21](docs/GUIDE.md#step-21-survive-a-reboot) |
 
 ## Repository layout
 
@@ -114,7 +116,8 @@ Requirements: Proxmox VE 8 (one node works; two nodes are used here), a Debian 1
 │   ├── ot_lab_decoders.xml         custom decoders
 │   └── ot_lab_rules.xml            custom rules 100100-100599
 └── tests/
-    └── mbtest.py                   raw Modbus firewall test client
+    ├── mbtest.py                   raw Modbus firewall test client
+    └── lab_health.sh               post-reboot health check (run on a Proxmox node)
 ```
 
 ## Detections at a glance

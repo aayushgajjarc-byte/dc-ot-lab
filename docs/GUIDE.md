@@ -206,16 +206,20 @@ flowchart LR
 
 ### 3.3 Hosts and addressing
 
-| Host | Type | Bridge | IP address | Role |
-|---|---|---|---|---|
-| `debian-L0-1` | LXC (Debian 12, unprivileged) | `vmbr10` | 192.168.71.10 | Simulator + OpenPLC |
-| `fw-l1` | LXC (Debian 12, unprivileged) | `vmbr10` + `vmbr20` + `vmbr30` | 192.168.71.2 / 192.168.72.2 / 192.168.73.2 | Internal OT firewall and router (Modbus DPI, zone conduits) |
-| `debian-L2` | LXC (Debian 12, unprivileged) | `vmbr20` | 192.168.72.10 | Node-RED SCADA/HMI |
-| `influx-l3` | LXC (Debian 12, unprivileged) | `vmbr30` | 192.168.73.10 | InfluxDB historian and `diode_send.py` |
-| `pfsense` | VM (FreeBSD) | WAN `vmbr0`, OT `vmbr30`, DMZ `dmz` | OT 192.168.73.3, DMZ 192.168.74.2 | OT/IT boundary firewall |
-| `mirror-dmz` | LXC (Debian 12, unprivileged) | VNet `dmz` | 192.168.74.10 | Mirror InfluxDB and `diode_recv.py` |
-| `grafana-it` | LXC (Debian 12, unprivileged) | VNet `graf` | 192.168.75.10 | Grafana IT dashboard (reads the mirror only) |
-| `wazuh-soc` | VM (Ubuntu 24.04) | VNet `soc` | 192.168.76.10 | Wazuh manager, indexer and dashboard (SOC) |
+| ID | Hostname | Short name in this guide | Type | Node | Bridge | IP address | Role |
+|---|---|---|---|---|---|---|---|
+| 105 | `Debian-L0-1` | `debian-L0-1` (PLC host) | LXC (Debian 12, unprivileged) | `dell` | `vmbr10` | 192.168.71.10 | Simulator + OpenPLC |
+| 107 | `Debian-L2` | `debian-L2` (SCADA) | LXC (Debian 12, unprivileged) | `dell` | `vmbr20` | 192.168.72.10 | Node-RED SCADA/HMI |
+| 108 | `Debian-OT-Internal-FW` | `fw-l1` | LXC (Debian 12, unprivileged) | `dell` | `vmbr10` + `vmbr20` + `vmbr30` | 192.168.71.2 / 192.168.72.2 / 192.168.73.2 | Internal OT firewall and router (Modbus DPI, zone conduits) |
+| 109 | `Debian-Influx-L3` | `influx-l3` (historian) | LXC (Debian 12, unprivileged) | `dell` | `vmbr30` | 192.168.73.10 | InfluxDB historian and `diode_send.py` |
+| 110 | `Pfsense-DMZ-FW` | pfSense | VM (FreeBSD) | `dell` | WAN `vmbr0`, OT `vmbr30`, `dmz`, `graf`, `soc` | OT 192.168.73.3, DMZ/IT/SOC .2 | OT/IT boundary firewall |
+| 111 | `mirror-dmz` | `mirror-dmz` | LXC (Debian 12, unprivileged) | `pc1` | VNet `dmz` | 192.168.74.10 | Mirror InfluxDB and `diode_recv.py` |
+| 112 | `grafana-it` | `grafana-it` | LXC (Debian 12, unprivileged) | `pc1` | VNet `graf` | 192.168.75.10 | Grafana IT dashboard (reads the mirror only) |
+| 113 | `wazuh-soc` | `wazuh-soc` | VM (Ubuntu 24.04) | `pc1` | VNet `soc` | 192.168.76.10 | Wazuh manager, indexer and dashboard (SOC) |
+| 100 | `tailscale` | | LXC | | `vmbr0` | management | Remote access (not part of the Purdue model) |
+| 106 | `reverse-proxy` | | LXC | | `vmbr0` + `.1` on lab networks | management | Caddy reverse proxy for the web UIs (`*.lab`) |
+
+The guide uses the short names in prose (for example `fw-l1`); the hostname column is what you see in Proxmox and in log lines (`Debian-OT-Internal-FW` appears in the firewall's syslog).
 
 ### 3.3.1 Two-node placement and the SDN networks
 
@@ -319,36 +323,36 @@ pveam available | grep debian-12
 pveam download local debian-12-standard_<version>_amd64.tar.zst
 ```
 
-Create the containers (replace the IDs and `<version>`):
+Create the containers (replace `<version>`; the IDs and hostnames are the ones used in this lab, see [3.3](#33-hosts-and-addressing)):
 
 ```bash
 # L0/L1: simulator + OpenPLC
-pct create 110 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
-  --hostname debian-L0-1 --cores 2 --memory 1024 --swap 0 \
+pct create 105 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
+  --hostname Debian-L0-1 --cores 2 --memory 1024 --swap 0 \
   --rootfs local-lvm:8 --unprivileged 1 --onboot 1 \
   --net0 name=eth0,bridge=vmbr10,ip=192.168.71.10/24,gw=192.168.71.2,firewall=0
 
 # Internal OT firewall between L1, L2 and L3 (no gateway on any NIC)
-pct create 120 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
-  --hostname fw-l1 --cores 1 --memory 512 --swap 0 \
+pct create 108 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
+  --hostname Debian-OT-Internal-FW --cores 1 --memory 512 --swap 0 \
   --rootfs local-lvm:4 --unprivileged 1 --onboot 1 \
   --net0 name=eth0,bridge=vmbr10,ip=192.168.71.2/24,firewall=0 \
   --net1 name=eth1,bridge=vmbr20,ip=192.168.72.2/24,firewall=0 \
   --net2 name=eth2,bridge=vmbr30,ip=192.168.73.2/24,firewall=0
 
 # L2: Node-RED
-pct create 130 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
-  --hostname debian-L2 --cores 2 --memory 1024 --swap 0 \
+pct create 107 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
+  --hostname Debian-L2 --cores 2 --memory 1024 --swap 0 \
   --rootfs local-lvm:8 --unprivileged 1 --onboot 1 \
   --net0 name=eth0,bridge=vmbr20,ip=192.168.72.10/24,gw=192.168.72.2,firewall=0
 
 # L3: historian
-pct create 140 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
-  --hostname influx-l3 --cores 2 --memory 2048 --swap 0 \
+pct create 109 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
+  --hostname Debian-Influx-L3 --cores 2 --memory 2048 --swap 0 \
   --rootfs local-lvm:16 --unprivileged 1 --onboot 1 \
   --net0 name=eth0,bridge=vmbr30,ip=192.168.73.10/24,gw=192.168.73.2,firewall=0
 
-pct start 110 && pct start 120 && pct start 130 && pct start 140
+pct start 108 && pct start 105 && pct start 107 && pct start 109
 ```
 
 Setting the **gateway of each host to the firewall** provides the routing: `debian-L0-1` reaches the other zones through 192.168.71.2, `debian-L2` through 192.168.72.2, and `influx-l3` through 192.168.73.2. If a host has an extra management NIC, leave that NIC's gateway empty and instead add a static route (see [Troubleshooting](#10-troubleshooting)).
@@ -360,7 +364,7 @@ During the installs below the containers need internet access. Temporarily give 
 ### Step 4. L0: install the simulator (in `debian-L0-1`)
 
 ```bash
-pct enter 110
+pct enter 105
 apt update && apt install -y python3 python3-venv python3-pip
 mkdir -p /opt/dcsim && cd /opt/dcsim
 python3 -m venv venv
@@ -455,7 +459,7 @@ Verify the PLC's own Modbus server from the container:
 ### Step 7. Firewall container (in `fw-l1`)
 
 ```bash
-pct enter 120
+pct enter 108
 apt update
 DEBIAN_FRONTEND=noninteractive apt install -y iptables iptables-persistent netcat-openbsd tcpdump
 iptables -V        # expect (nf_tables)
@@ -467,7 +471,7 @@ cat /proc/sys/net/ipv4/ip_forward   # expect 1
 Copy `firewall/fw_ot.sh` ([listing](../firewall/fw_ot.sh)) into the container, for example from the Proxmox host:
 
 ```bash
-pct push 120 /root/fw_ot.sh /root/fw_ot.sh --perms 755
+pct push 108 /root/fw_ot.sh /root/fw_ot.sh --perms 755
 ```
 
 Edit the variables at the top of the script if your addresses differ:
@@ -495,7 +499,7 @@ netfilter-persistent save
 Node-RED 5 needs Node.js 22.9 or later. Use a normal user, not root:
 
 ```bash
-pct enter 130
+pct enter 107
 apt update && apt install -y curl git build-essential sudo
 adduser nr && usermod -aG sudo nr
 su - nr
@@ -519,7 +523,7 @@ The flow uses Node's built-in `net` module in the "raw Modbus probe" function no
 ### Step 9. L3: install the historian (in `influx-l3`)
 
 ```bash
-pct enter 140
+pct enter 109
 # copy setup_influx.sh into the container first (for example with pct push from the Proxmox host)
 ADMIN_PASSWORD='choose-a-strong-password' ./setup_influx.sh
 ```
@@ -620,7 +624,7 @@ Also add `pfsense.lab` under **System > Advanced > Admin Access > Alternate Host
 
 ### Step 14. The DMZ mirror and the diode agents
 
-**Mirror host (on `pc1`).** Create an LXC `mirror-dmz` on the `dmz` VNet (`192.168.74.10/24`, gateway `192.168.74.2`, MTU 1450, 2 vCPU, 2 GB, 16 GB). Give it a temporary second NIC on `vmbr0` for the install and remove it afterwards. Run `setup_influx.sh` inside it, and keep both tokens: the **write** token is for the receiver and the **read** token is for Grafana later.
+**Mirror host (on `pc1`).** Create an LXC `mirror-dmz` (ID 111) on the `dmz` VNet (`192.168.74.10/24`, gateway `192.168.74.2`, MTU 1450, 2 vCPU, 2 GB, 16 GB). Give it a temporary second NIC on `vmbr0` for the install and remove it afterwards. Run `setup_influx.sh` inside it, and keep both tokens: the **write** token is for the receiver and the **read** token is for Grafana later.
 
 **Receiver (in `mirror-dmz`).** Put `diode_recv.py` ([listing](../diode/diode_recv.py)) in `/opt/diode/` and create `/etc/diode/recv.env` with `chmod 600`:
 
@@ -688,19 +692,19 @@ You should see `received`, `points` and `last_seq` growing, with `lost`, `reject
 **Grafana container (on `pc1`).**
 
 ```bash
-pct create <ID> local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
+pct create 112 local:vztmpl/debian-12-standard_<version>_amd64.tar.zst \
   --hostname grafana-it --cores 2 --memory 2048 --swap 0 \
   --rootfs local-lvm:8 --unprivileged 1 --onboot 1 \
   --net0 name=eth0,bridge=graf,ip=192.168.75.10/24,mtu=1450,firewall=0 \
   --net1 name=eth1,bridge=vmbr0,ip=dhcp,firewall=0
-pct start <ID>
+pct start 112
 ```
 
 The temporary `net1` (on pc1's `vmbr0`) provides internet for the install, and `net0` has no gateway yet so there is no clash between two default routes. After the install, remove it and set the gateway:
 
 ```bash
-pct set <ID> --delete net1
-pct set <ID> --net0 name=eth0,bridge=graf,ip=192.168.75.10/24,gw=192.168.75.2,mtu=1450,firewall=0
+pct set 112 --delete net1
+pct set 112 --net0 name=eth0,bridge=graf,ip=192.168.75.10/24,gw=192.168.75.2,mtu=1450,firewall=0
 ```
 
 **Install and provision.** Copy `grafana/setup_grafana.sh` and `grafana/dc_it_dashboard.json` into the container (same folder) and run:
@@ -893,6 +897,44 @@ chronyc sources                                 # after ~15 s: #* PHC0
 **Display in IST:** Wazuh dashboard **Dashboard Management > Advanced settings > `dateFormat:tz`** = `Asia/Kolkata`; Grafana **Administration > Default preferences > Timezone** = `Asia/Kolkata`.
 
 **Check:** `date -u` on `dell`, `pc1`, a container, the Wazuh VM and pfSense agree within a second.
+
+### Step 21. Survive a reboot
+
+After a host reboot every service must come back by itself, in the right order. Most of this is already in place from earlier steps; this step closes the gaps found in the lab.
+
+**Start order of the containers** (on `dell`): the firewall first, then the PLC, SCADA and historian.
+
+```bash
+pct set 108 --onboot 1 --startup order=1          # fw-l1 (Debian-OT-Internal-FW)
+qm  set 110 --onboot 1 --startup order=2          # pfSense VM
+pct set 105 --onboot 1 --startup order=3,up=20    # PLC host: give OpenPLC time to start
+pct set 107 --onboot 1 --startup order=4          # SCADA
+pct set 109 --onboot 1 --startup order=5          # historian
+```
+
+On `pc1`:
+
+```bash
+pct set 111 --onboot 1 --startup order=1          # mirror-dmz
+pct set 112 --onboot 1 --startup order=2          # grafana-it
+qm  set 113 --onboot 1 --startup order=3          # wazuh-soc
+```
+
+**OpenPLC must start in RUN mode.** The runtime service starts on boot, but the PLC program stays stopped unless you tell it otherwise. In the OpenPLC web UI open **Settings**, tick **Start OpenPLC in RUN mode**, and save. Without this the whole chain looks alive (the diode keeps sending empty heartbeats) while no process data flows.
+
+**Simulator.** `systemctl is-enabled dcsim` inside the PLC container must say `enabled` (Step 4).
+
+**Firewall rules.** `netfilter-persistent save` in Step 7 makes the rules load at boot; save again after every change to `fw_ot.sh`. The host modules load from `/etc/modules-load.d/fw-lab.conf` (Step 2).
+
+**Health check.** `tests/lab_health.sh` runs on a Proxmox node and checks every lab container on that node: services, listening ports, routes, that the PLC clock is advancing, and that new data reached the historian and the mirror in the last minute. Containers on the other node are skipped, so run it on both.
+
+```bash
+bash lab_health.sh        # on dell, then on pc1 (defaults: 105, 107, 108, 109, 111, 112)
+```
+
+Each failed check prints the command that usually fixes it. The exit code is the number of failures, so it can also run from cron.
+
+**Check:** reboot `dell`, wait two minutes, run the health check: `ALL CHECKS PASSED`, and the Grafana dashboard fills in without any manual step.
 
 ---
 
@@ -1333,6 +1375,7 @@ The code lives in the repository; this table maps each component to its file.
 | Diode systemd units | [`diode/systemd/`](../diode/systemd/) |
 | Diode environment examples | [`diode/env/`](../diode/env/) |
 | OT routes to DMZ and SOC | [`network/dmz-route.service`](../network/dmz-route.service) |
+| Lab health check | [`tests/lab_health.sh`](../tests/lab_health.sh) |
 | IT dashboard | [`grafana/dc_it_dashboard.json`](../grafana/dc_it_dashboard.json) |
 
 ---
@@ -1378,7 +1421,7 @@ The code lives in the repository; this table maps each component to its file.
 | Link status shows `STALE` while data looks fine | The statistics point is older than 15 s, for example the receiver stopped or the stats interval was raised | `systemctl status diode-recv` on the mirror. The receiver writes statistics every 5 s by default |
 | A temperature panel is empty but the link is live | The Node-RED historian branch is not writing | Check `Historian link` on the SCADA page and the historian bucket |
 | `pkill -f` kills your own shell | The pattern matches your own command line | Use `pgrep -x <name>` or PID files |
-| Grafana and the SCADA dashboard suddenly show no data after host or container reboots | OpenPLC came back stopped, so Node-RED has nothing to poll and the historian receives nothing (the diode keeps sending empty heartbeats, so the link looks healthy) | Open the OpenPLC web UI and press **Start PLC**; tick **Settings > Start OpenPLC in RUN mode**. Also check the simulator is listening (`ss -tlnp \| grep 5020`) and the firewall rules came back (`iptables -L MB_DROP -n`) |
+| Grafana and the SCADA dashboard suddenly show no data after host or container reboots (run `tests/lab_health.sh`) | OpenPLC came back stopped, so Node-RED has nothing to poll and the historian receives nothing (the diode keeps sending empty heartbeats, so the link looks healthy) | Open the OpenPLC web UI and press **Start PLC**; tick **Settings > Start OpenPLC in RUN mode**. Also check the simulator is listening (`ss -tlnp \| grep 5020`) and the firewall rules came back (`iptables -L MB_DROP -n`) |
 | rsyslog logs `parameter 'Ruleset' not known` for `60-wazuh.conf` | rsyslog 8.2302 (Debian 12) does not accept `Ruleset` on the `imjournal` module line | Use the current `setup_log_forwarding.sh` (filter in the default ruleset) and re-run it; `rsyslogd -N1` must report no errors |
 | Syslog reaches the Wazuh VM (`tcpdump` shows it) but nothing is in `archives.log` | The source address is not in `<allowed-ips>` (pfSense sends from `192.168.76.2`, not its OT address) | Check the source with `tcpdump -nn udp port 514`, add it to the syslog `<remote>` block and restart the manager |
 | `fw-l1` events arrive but no alert fires | The decoder pattern expects one space after `MODBUS-BLOCK:`; ulogd writes two, plus a `MAC=` field | Use the current `ot_lab_decoders.xml` (`:\s+IN=`) |
@@ -1423,7 +1466,7 @@ See the [repository README](../README.md#repository-layout).
 | L4 | IT dashboard | **Done.** Grafana on the `graf` VNet (pc1, 192.168.75.10) reading the mirror over TCP 8086, with link-health panels. |
 | L5 | SOC | **Done.** Wazuh 4.14 (VM) on the `soc` VNet. OT hosts send one-way UDP syslog (fw-l1 via `NFLOG` + `ulogd2`, historian, pfSense); IT hosts run agents. Custom decoders and rules for Modbus blocks, zone violations, diode tampering and link loss. |
 | L5 | Network IDS | Next: Suricata or Zeek with a Modbus parser on `fw-l1`, so function codes are visible even when they are allowed. |
-| Ops | Auto-start | Next: systemd units for `dc_sim.py` and the firewall rules, and OpenPLC "Start in RUN mode", so the chain survives a reboot. |
+| Ops | Reboot resilience | **Done.** Container start order, OpenPLC in RUN mode at boot, and `tests/lab_health.sh` (Step 21). |
 | Red team | Attacker | Kali VM on L4 or L5. |
 
 Planned conduits:
