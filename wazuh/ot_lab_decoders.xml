@@ -3,11 +3,19 @@
   Install to /var/ossec/etc/decoders/ on the manager.
 
   Sources
-    fw-l1        iptables NFLOG lines (ulogd2 -> rsyslog, tag "fw-l1-nflog"), prefixes MODBUS-BLOCK / FW-DENY
+    fw-l1        iptables NFLOG lines (ulogd2 -> rsyslog, tag "fw-l1-nflog"), prefixes MODBUS-BLOCK / FW-DENY;
+                 Modbus blocks carry FC=<code>:<name>, e.g. FC=08/0001:restart-comms (field modbus_fc)
     diode-recv   DMZ mirror receiver log (journald, via the Wazuh agent)
     diode-send   historian sender log (journald, via rsyslog)
     grafana-log  /var/log/grafana/grafana.log (Wazuh agent on grafana-it)
-  pfSense lines are decoded by Wazuh's built-in "pf" decoder (program filterlog), no custom decoder needed.
+  pfSense sends no hostname, so filterlog and GUI logins use the pf-nohost and pf-gui-nohost decoders below.
+  Also: openplc (web UI), node-red (audit), ot-fim (file integrity and account changes on OT hosts).
+
+  How the field decoders are written (checked against the Wazuh 4.14 source, decoders/decoder.c):
+  under one parent, only the FIRST child without a <prematch> is used, and if its regex fails decoding stops.
+  The exception is "sibling" decoders: children with the SAME name are all tried in turn, each adding its fields.
+  So every parent below has ONE group of same-named children, one small regex per field group, and no optional
+  capture groups (an unmatched group ends the field list early).
 -->
 
 <!-- ===== fw-l1: lines like
@@ -17,16 +25,34 @@ Nov 10 12:00:01 fw-l1 fw-l1-nflog: Nov 10 12:00:01 fw-l1 MODBUS-BLOCK: IN=eth1 O
   <program_name>^fw-l1-nflog</program_name>
 </decoder>
 
-<decoder name="ot-fw-ports">
+<decoder name="ot-fw-fields">
   <parent>ot-fw</parent>
-  <regex type="pcre2">(MODBUS-BLOCK|FW-DENY):\s+IN=\S* OUT=\S* .*?SRC=(\S+) DST=(\S+) .*?PROTO=(\w+) SPT=(\d+) DPT=(\d+)</regex>
-  <order>action,srcip,dstip,protocol,srcport,dstport</order>
+  <regex type="pcre2">(MODBUS-BLOCK|FW-DENY):</regex>
+  <order>action</order>
 </decoder>
 
-<decoder name="ot-fw-noports">
+<decoder name="ot-fw-fields">
   <parent>ot-fw</parent>
-  <regex type="pcre2">(MODBUS-BLOCK|FW-DENY):\s+IN=\S* OUT=\S* .*?SRC=(\S+) DST=(\S+) .*?PROTO=(\w+)</regex>
-  <order>action,srcip,dstip,protocol</order>
+  <regex type="pcre2">MODBUS-BLOCK: FC=(\S+)</regex>
+  <order>modbus_fc</order>
+</decoder>
+
+<decoder name="ot-fw-fields">
+  <parent>ot-fw</parent>
+  <regex type="pcre2"> SRC=(\S+) DST=(\S+) </regex>
+  <order>srcip,dstip</order>
+</decoder>
+
+<decoder name="ot-fw-fields">
+  <parent>ot-fw</parent>
+  <regex type="pcre2"> PROTO=(\w+)</regex>
+  <order>protocol</order>
+</decoder>
+
+<decoder name="ot-fw-fields">
+  <parent>ot-fw</parent>
+  <regex type="pcre2"> SPT=(\d+) DPT=(\d+)</regex>
+  <order>srcport,dstport</order>
 </decoder>
 
 <!-- ===== diode receiver (mirror-dmz). Journald lines look like
@@ -36,13 +62,13 @@ Nov 10 20:12:18 mirror-dmz diode-recv[321]: 2026-11-10 20:12:18 REJECTED datagra
   <prematch type="pcre2">^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (?:REJECTED datagram|sequence gap|sequence went backwards|mirror write failed|stats write failed|summary:|first valid datagram|diode_recv:)</prematch>
 </decoder>
 
-<decoder name="diode-recv-rejected">
+<decoder name="diode-recv-fields">
   <parent>diode-recv</parent>
   <regex type="pcre2">REJECTED datagram from (\S+): (.+)$</regex>
   <order>srcip,reason</order>
 </decoder>
 
-<decoder name="diode-recv-gap">
+<decoder name="diode-recv-fields">
   <parent>diode-recv</parent>
   <regex type="pcre2">sequence gap: expected (\d+) got (\d+) \((\d+) lost\)</regex>
   <order>expected_seq,got_seq,lost</order>
@@ -78,14 +104,100 @@ Fields: rule,subrule,anchor,tracker,interface,reason,action,direction,4,tos,ecn,
   <prematch type="pcre2">^(?:filterlog\[\d+\]:\s*)?\d+,\d*,[^,]*,\d+,[\w.]+,\w+,(?:block|pass),(?:in|out),4,</prematch>
 </decoder>
 
-<decoder name="pf-nohost-ports">
-  <parent>pf-nohost</parent>
-  <regex type="pcre2">^(?:filterlog\[\d+\]:\s*)?\d+,\d*,[^,]*,\d+,([\w.]+),\w+,(block|pass),(in|out),4,(?:[^,]*,){6}\d+,(tcp|udp),\d+,([\d.]+),([\d.]+),(\d+),(\d+)</regex>
-  <order>interface,action,direction,protocol,srcip,dstip,srcport,dstport</order>
-</decoder>
-
-<decoder name="pf-nohost-noports">
+<decoder name="pf-nohost-fields">
   <parent>pf-nohost</parent>
   <regex type="pcre2">^(?:filterlog\[\d+\]:\s*)?\d+,\d*,[^,]*,\d+,([\w.]+),\w+,(block|pass),(in|out),4,(?:[^,]*,){6}\d+,(\w+),\d+,([\d.]+),([\d.]+)</regex>
   <order>interface,action,direction,protocol,srcip,dstip</order>
 </decoder>
+
+<decoder name="pf-nohost-fields">
+  <parent>pf-nohost</parent>
+  <regex type="pcre2">,4,(?:[^,]*,){6}\d+,(?:tcp|udp),\d+,[\d.]+,[\d.]+,(\d+),(\d+)</regex>
+  <order>srcport,dstport</order>
+</decoder>
+
+<!-- ===== OpenPLC web UI (journal identifier "openplc", set by setup_log_forwarding.sh plc). Werkzeug request lines:
+[INFO] 17:20:01 - 192.168.73.1 - - [14/Nov/2026 17:20:01] "POST /login HTTP/1.1" 302 -
+OpenPLC answers a good login with 302 (redirect to the dashboard) and a bad one with 200 (login page again). ===== -->
+<decoder name="openplc">
+  <program_name>^openplc</program_name>
+</decoder>
+
+<decoder name="openplc-web">
+  <parent>openplc</parent>
+  <regex type="pcre2">(\d{1,3}(?:\.\d{1,3}){3}) - - \[[^\]]*\] "(\w+) (\S+) HTTP/[\d.]+" (\d{3})</regex>
+  <order>srcip,method,url,status</order>
+</decoder>
+
+<!-- ===== Node-RED (journal identifier "node-red"). Audit lines (logging.console.audit = true):
+14 Nov 17:20:01 - [audit] {"event":"flows.set","type":"full","version":"v2","user":{"username":"admin"},"path":"/flows","ip":"192.168.72.1"}
+Sibling decoders (same name) each pick one field, because the keys are not always present. ===== -->
+<decoder name="node-red">
+  <program_name>^node-red</program_name>
+</decoder>
+
+<decoder name="node-red-audit">
+  <parent>node-red</parent>
+  <regex type="pcre2">\[audit\] \{"event":"([^"]+)"</regex>
+  <order>audit_event</order>
+</decoder>
+
+<decoder name="node-red-audit">
+  <parent>node-red</parent>
+  <regex type="pcre2">\[audit\] .*"ip":"(?:::ffff:)?([^"]+)"</regex>
+  <order>srcip</order>
+</decoder>
+
+<decoder name="node-red-audit">
+  <parent>node-red</parent>
+  <regex type="pcre2">\[audit\] .*"username":"([^"]*)"</regex>
+  <order>dstuser</order>
+</decoder>
+
+<!-- ===== ot-fim (inotify watcher on OT hosts, installed by setup_log_forwarding.sh). Two kinds of line:
+FIM change path=/root/fw_ot.sh event=CLOSE_WRITE,CLOSE sha256=3f2a... mode=755 owner=root:root
+FIM delete path=/etc/diode/send.env event=DELETE
+ACCOUNT user-added name=testfim uid=1001 gid=1001 home=/home/testfim shell=/bin/sh
+ACCOUNT password-changed name=root
+ACCOUNT group-members-changed name=sudo added=testfim removed=- ===== -->
+<decoder name="ot-fim">
+  <program_name>^ot-fim</program_name>
+</decoder>
+
+<decoder name="ot-fim-fields">
+  <parent>ot-fim</parent>
+  <regex type="pcre2">^FIM (change|delete) path=(\S+) event=(\S+)</regex>
+  <order>fim_action,fim_path,fim_event</order>
+</decoder>
+
+<decoder name="ot-fim-fields">
+  <parent>ot-fim</parent>
+  <regex type="pcre2"> sha256=(\S+) mode=(\S+) owner=(\S+)</regex>
+  <order>fim_sha256,fim_mode,fim_owner</order>
+</decoder>
+
+<decoder name="ot-fim-fields">
+  <parent>ot-fim</parent>
+  <regex type="pcre2">^ACCOUNT (\S+) name=(\S+)</regex>
+  <order>account_event,account_name</order>
+</decoder>
+
+<decoder name="ot-fim-fields">
+  <parent>ot-fim</parent>
+  <regex type="pcre2">^ACCOUNT \S+ name=\S+ (.+)$</regex>
+  <order>account_detail</order>
+</decoder>
+
+<!-- ===== pfSense web GUI logins without a hostname (same pre-decoder problem as filterlog):
+Nov 14 10:00:00 php-fpm[412]: /index.php: Successful login for user 'admin' from: 192.168.73.1 (Local Database)
+Nov 14 10:00:00 php-fpm[412]: /index.php: webConfigurator authentication error for user 'admin' from: 192.168.73.1 ===== -->
+<decoder name="pf-gui-nohost">
+  <prematch type="pcre2">^(?:php-fpm\[\d+\]:\s*)?/\S+\.php: </prematch>
+</decoder>
+
+<decoder name="pf-gui-nohost-user">
+  <parent>pf-gui-nohost</parent>
+  <regex type="pcre2">for user '([^']*)' from: ([\d.]+)</regex>
+  <order>dstuser,srcip</order>
+</decoder>
+

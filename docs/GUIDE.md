@@ -304,8 +304,8 @@ Apply with `ifreload -a`. The bridges have no uplink, so traffic stays inside th
 The firewall container shares the host kernel, so the netfilter modules it needs must be loaded on the **host**:
 
 ```bash
-modprobe xt_u32 nft_compat nf_conntrack xt_conntrack xt_limit xt_LOG nf_log_syslog nfnetlink_log xt_NFLOG
-printf "xt_u32\nnft_compat\nnf_conntrack\nxt_conntrack\nxt_limit\nxt_LOG\nnf_log_syslog\nnfnetlink_log\nxt_NFLOG\n" > /etc/modules-load.d/fw-lab.conf
+modprobe xt_u32 nft_compat nf_conntrack xt_conntrack xt_limit xt_LOG nf_log_syslog nfnetlink_log xt_NFLOG xt_hashlimit
+printf "xt_u32\nnft_compat\nnf_conntrack\nxt_conntrack\nxt_limit\nxt_LOG\nnf_log_syslog\nnfnetlink_log\nxt_NFLOG\nxt_hashlimit\n" > /etc/modules-load.d/fw-lab.conf
 echo "net.netfilter.nf_log_all_netns=1" > /etc/sysctl.d/99-fw-lab.conf
 sysctl --system
 lsmod | grep -E "xt_u32|nft_compat"
@@ -477,10 +477,10 @@ pct push 108 /root/fw_ot.sh /root/fw_ot.sh --perms 755
 Edit the variables at the top of the script if your addresses differ:
 
 ```
-PLC=192.168.71.10    HMI=192.168.72.10    ENG=192.168.72.11    HIST=192.168.73.10
+PLC=192.168.71.10    HMI=192.168.72.10    HIST=192.168.73.10    SOC=192.168.76.10
 ```
 
-Delete the `ENG` lines and the `ENG` loop entry if you have no engineering workstation. Apply and persist the rules:
+An optional **engineering workstation** gets read-only Modbus access (function codes 1-4, no writes). It is off by default, because an allow rule for an address nobody uses lets anyone who takes that address read the PLC. To use it, put the workstation at `192.168.72.11` and run `ENG=192.168.72.11 /root/fw_ot.sh`. Apply and persist the rules:
 
 ```bash
 /root/fw_ot.sh
@@ -490,7 +490,7 @@ iptables -L MB_POLICY -n -v
 netfilter-persistent save
 ```
 
-**Check:** `FORWARD` has policy `DROP`, the `MB_FILTER` and `MB_POLICY` chains are present, two rules mention `8086` (the historian conduit), and the logging rules use `NFLOG`. After a container reboot, confirm the rules came back (`iptables -L MB_DROP -n`); if they did not, run `fw_ot.sh` again and `netfilter-persistent save`. If the script reports an error on a `u32` line, the host module from Step 2 is not loaded.
+**Check:** `FORWARD` has policy `DROP`, the `MB_FILTER` and `MB_POLICY` chains are present, two rules mention `8086` (the historian conduit), and the logging rules use `NFLOG`. After a container reboot, confirm the rules came back (`iptables -S | grep MODBUS-BLOCK`); if they did not, run `fw_ot.sh` again and `netfilter-persistent save`. If the script reports an error on a `u32` line, the host module from Step 2 is not loaded.
 
 > The `permission denied on key kernel.pid_max` and `fs.protected_*` messages from `sysctl --system` are harmless inside an unprivileged container.
 
@@ -742,7 +742,7 @@ If the reverse proxy has a NIC on the `graf` VNet at `192.168.75.1`, you do not 
 
 | Interface | Pass | Notes |
 |---|---|---|
-| **OT** | UDP from `192.168.73.2` and `192.168.73.10` to `192.168.76.10` port 514 | Syslog from `fw-l1` and the historian. **State type: None**, like the diode rule, so nothing comes back into OT |
+| **OT** | UDP from `192.168.73.2`, `192.168.73.10`, `192.168.71.10` and `192.168.72.10` to `192.168.76.10` port 514 | Syslog from `fw-l1`, the historian, the PLC host and the SCADA host (the last two are routed through `fw-l1`, which keeps their source address). **State type: None**, like the diode rule, so nothing comes back into OT |
 | **DMZ** | TCP from `192.168.74.10` to `192.168.76.10` ports 1514, 1515 | Wazuh agent on the mirror. Put it **above** the DMZ block-all rule |
 | **GRAF** | TCP from `192.168.75.10` to `192.168.76.10` ports 1514, 1515 | Wazuh agent on Grafana |
 | **SOC** | nothing | The SOC never initiates connections (rule 100203 alerts if it tries) |
@@ -788,6 +788,8 @@ sudo bash ./wazuh-install.sh -a        # prints the admin password at the end: k
   <protocol>udp</protocol>
   <allowed-ips>192.168.73.2</allowed-ips>   <!-- fw-l1 -->
   <allowed-ips>192.168.73.10</allowed-ips>  <!-- historian -->
+  <allowed-ips>192.168.71.10</allowed-ips>  <!-- PLC host (through fw-l1) -->
+  <allowed-ips>192.168.72.10</allowed-ips>  <!-- SCADA host (through fw-l1) -->
   <allowed-ips>192.168.76.2</allowed-ips>   <!-- pfSense (sends from its SOC address) -->
 </remote>
 ```
@@ -809,16 +811,49 @@ OT hosts get **no agent**: an agent keeps a two-way TCP session with the manager
 
 `wazuh/setup_log_forwarding.sh` ([listing](../wazuh/setup_log_forwarding.sh)) configures one host per run. Copy it to each host and run it as root with the host's role:
 
-| Host | Command | What it forwards | Transport |
-|---|---|---|---|
-| `fw-l1` | `bash setup_log_forwarding.sh fw-l1` | `MODBUS-BLOCK` and `FW-DENY` drops (installs `ulogd2`, NFLOG group 1 to `/var/log/ulog/syslogemu.log`, tag `fw-l1-nflog`) | rsyslog, UDP 514 |
-| `influx-l3` | `bash setup_log_forwarding.sh historian` | `diode-send`, `sshd`, `sudo`, `su` from the journal | rsyslog, UDP 514 |
-| `mirror-dmz` | `bash setup_log_forwarding.sh mirror` | `diode-recv` journal | Wazuh agent |
-| `grafana-it` | `bash setup_log_forwarding.sh grafana` | Grafana journal and `/var/log/grafana/grafana.log` | Wazuh agent |
+| Host | Command | What it forwards | File integrity | Transport |
+|---|---|---|---|---|
+| PLC host (105) | `bash setup_log_forwarding.sh plc` | OpenPLC web UI requests (logins, start/stop, program uploads, forced values, users, settings), simulator, `sshd`, `sudo` | `ot-fim`: PLC programs, `openplc.db`, active program, simulator, systemd units | rsyslog, UDP 514 |
+| SCADA (107) | `bash setup_log_forwarding.sh scada` | Node-RED log with the **audit** log switched on (deploys, logins, palette changes) | `ot-fim`: `flows.json`, `settings.js`, `package.json`, systemd units | rsyslog, UDP 514 |
+| `fw-l1` (108) | `bash setup_log_forwarding.sh fw-l1` | `MODBUS-BLOCK` and `FW-DENY` drops (installs `ulogd2`, NFLOG group 1 to `/var/log/ulog/syslogemu.log`, tag `fw-l1-nflog`) | `ot-fim`: `fw_ot.sh`, `/etc/iptables`, logging config | rsyslog, UDP 514 |
+| historian (109) | `bash setup_log_forwarding.sh historian` | `diode-send`, `sshd`, `sudo`, `su` | `ot-fim`: `/etc/diode`, `/opt/diode`, `/etc/influxdb`, systemd units | rsyslog, UDP 514 |
+| `mirror-dmz` (111) | `bash setup_log_forwarding.sh mirror` | `diode-recv` journal | Wazuh syscheck (`agent.conf`) | Wazuh agent |
+| `grafana-it` (112) | `bash setup_log_forwarding.sh grafana` | Grafana journal and `/var/log/grafana/grafana.log` (logins, failed logins) | Wazuh syscheck (`agent.conf`) | Wazuh agent |
 
-pfSense needs no script (remote logging in Step 17). The script is idempotent; it sends a test line tagged `ot-lab-test` on the OT roles. `WAZUH_IP` (default `192.168.76.10`) and `WAZUH_PORT` (default `514`) can be overridden.
+pfSense needs no script (remote logging in Step 17); tick **General Authentication Events** as well as Firewall Events so web GUI logins are sent. The script is idempotent; it sends a test line tagged `ot-lab-test` on the OT roles. `WAZUH_IP` (default `192.168.76.10`) and `WAZUH_PORT` (default `514`) can be overridden.
 
-The OT hosts need a package (`rsyslog`, `ulogd2`) that is not installed, and OT has no internet. Give the container a temporary second NIC for the install and remove it afterwards, so it is back on its normal address before you test (Wazuh only accepts the allowed source IPs).
+**Packages without internet.** The OT roles need `rsyslog` and `inotify-tools` (`fw-l1` also `ulogd2`); the script only calls `apt` for packages that are missing, and the agent roles (`mirror`, `grafana`) need nothing. OT has no internet, so download the packages on a Proxmox node and push them in. **The packages must match the containers' release (Debian 12 "bookworm"), not the node's:** Proxmox VE 9 runs on Debian 13 "trixie", and trixie packages need a newer C library than the containers have. This downloads bookworm packages on the node without changing the node's own apt setup:
+
+```bash
+# on dell
+B=/root/bookworm-apt; mkdir -p $B/lists/partial $B/cache/archives/partial $B/parts /root/otdebs12
+K=/usr/share/keyrings/debian-archive-keyring.gpg
+cat > $B/sources.list <<EOF
+deb [signed-by=$K] http://deb.debian.org/debian bookworm main
+deb [signed-by=$K] http://security.debian.org/debian-security bookworm-security main
+EOF
+O="-o Dir::Etc::SourceList=$B/sources.list -o Dir::Etc::SourceParts=$B/parts -o Dir::State::Lists=$B/lists -o Dir::Cache=$B/cache"
+apt-get $O update
+cd /root/otdebs12 && apt-get $O download rsyslog libestr0 libfastjson4 liblognorm5 inotify-tools libinotifytools0 ulogd2
+ls        # every file name must contain deb12 or a bookworm version, e.g. rsyslog_8.2302.0-1+deb12u1
+
+for id in 105 107 108 109; do
+  pct exec $id -- bash -c 'rm -rf /root/debs; mkdir -p /root/debs'
+  for f in /root/otdebs12/*.deb; do pct push $id "$f" "/root/debs/$(basename "$f")"; done
+  [ $id = 108 ] || pct exec $id -- bash -c 'rm -f /root/debs/ulogd2_*.deb'     # ulogd2 only on fw-l1
+  pct exec $id -- bash -c 'dpkg -i /root/debs/*.deb && dpkg --audit && echo "CT ok"'
+done
+```
+
+**The PLC and SCADA hosts sit behind `fw-l1`.** Their syslog crosses it, so `fw_ot.sh` has a one-way conduit for UDP 514 from `192.168.71.10` and `192.168.72.10` to the SOC (re-run it and `netfilter-persistent save`), pfSense's OT rule and Wazuh's `allowed-ips` must list both addresses (Step 17), and their gateway (`fw-l1`) already routes the SOC through pfSense. Without the conduit, `fw-l1` drops the syslog and reports it as rule 100103 (`FW-DENY ... UDP/514`).
+
+**File integrity monitoring.** The OT hosts have no Wazuh agent, so the script installs `ot-fim`, a small inotify watcher (service `ot-fim`). Besides the role-specific paths in the table, every OT host watches the same tamper-relevant places: `/etc/rsyslog.d`, `/etc/systemd/system`, `/etc/sudoers.d`, the top level of `/etc` (accounts, `rsyslog.conf`, `ulogd.conf`, `hosts`) and `/usr/local/sbin` (the watcher itself). Every real change in the watched paths (content, permissions, owner, delete, rename) becomes one syslog line, for example `FIM change path=/root/fw_ot.sh event=CLOSE_WRITE,CLOSE sha256=... mode=755 owner=root:root`. Files opened for writing but left unchanged (SQLite does this on every read of `openplc.db`) are not reported.
+
+**Account changes: one alert each, none missed.** A single `useradd` rewrites `passwd`, `shadow`, `group`, `gshadow`, `subuid` and `subgid` and creates lock, temp and backup files next to them, which as plain file events is dozens of alerts for one change. So `ot-fim` does not report those files as files. It waits until they have been quiet for two seconds, compares the **users, passwords and groups** with its last snapshot, and writes one line per difference, for example `ACCOUNT user-added name=testfim uid=1001 gid=1001 home=/home/testfim shell=/bin/sh`, `ACCOUNT password-changed name=root` or `ACCOUNT group-members-changed name=sudo added=testfim removed=-`. This catches changes made with the tools and direct edits of the files alike, two users added together give two lines, and nothing depends on a time window in Wazuh. The snapshot is stored in `/var/lib/ot-fim` (root only; it holds a hash of each shadow field, never the password hash itself), so changes made while the watcher was stopped are reported when it starts. A user's private group and the group memberships a deleted user leaves are folded into the user's own event. Permission or owner changes of the account files are still reported as file changes. Limits: a change that is made and undone within the two-second window is not seen, and someone with root can stop or alter the watcher (stopping it is visible as a new `FIM start` line, and altering it fires rule 100558). The IT-side agents use Wazuh's own FIM instead: copy `wazuh/agent.conf` on the manager to `/var/ossec/etc/shared/default/agent.conf` and run `/var/ossec/bin/verify-agent-conf`. Files holding tokens or keys are monitored without content diffs, so secrets never reach the SOC.
+
+**OpenPLC notes.** The `plc` role restarts OpenPLC so the new log identifier takes effect; with **Start OpenPLC in RUN mode** ticked (Step 21) the PLC comes straight back. The web UI's own polling URLs (`/runtime_logs`, `/monitor-update`) are dropped on the host, because they repeat every second. If you reach OpenPLC through the reverse proxy, the source address in the alerts is the proxy's. OpenPLC stores its web passwords in plain text in `openplc.db`, which is one more reason the database is under FIM.
+
+**Node-RED notes.** The `scada` role switches on `audit: true` in `settings.js` (a backup is kept as `settings.js.orig`). Login events only exist once the editor has a login: set `adminAuth` in `settings.js` (hash a password with `node-red admin hash-pw`). Deploy events are logged either way.
 
 On `fw-l1`, `fw_ot.sh` must use the `NFLOG` targets (the current version does) and the host modules from Step 2 must be loaded.
 
@@ -1137,7 +1172,7 @@ Custom IDs are in the 100100-100599 range and every rule is in group `ot_lab`.
 | ID | Level | Fires on | Source |
 |---|---|---|---|
 | 100100 | 0 | Any `fw-l1` NFLOG line (base rule) | `fw-l1` |
-| 100101 | 10 | Dangerous Modbus function code from the HMI `192.168.72.10` blocked | `fw-l1` |
+| 100101 | 10 | Dangerous Modbus function code from the HMI `192.168.72.10` blocked; the alert names the code (`modbus_fc`, see 7.3) | `fw-l1` |
 | 100105 | 12 | Modbus to the PLC from any **other** host blocked | `fw-l1` |
 | 100102 | 13 | 5 Modbus blocks from one source in 60 s (MITRE T1498) | `fw-l1` |
 | 100103 | 8 | Other cross-zone traffic dropped (`FW-DENY`) | `fw-l1` |
@@ -1151,6 +1186,26 @@ Custom IDs are in the 100100-100599 range and every rule is in group `ot_lab`.
 | 100209 | 8 | Any other blocked traffic between lab zones | pfSense |
 | 100210 | 13 | 3 OT-to-DMZ TCP attempts from one host in 5 minutes | pfSense |
 | 100220-100222 | 8 / 5 / 11 | pfSense web login failure / success / repeated failures (T1110) | pfSense |
+| 100301 / 100302 / 100303 | 3 / 8 / 11 | OpenPLC web login / login failure / 5 failures in 2 minutes | PLC host |
+| 100304 / 100305 | 12 / 8 | PLC STOP / START requested from the web UI | PLC host |
+| 100306 | 12 | PLC program uploaded, changed or compiled | PLC host |
+| 100307 | 12 | Value forced on a PLC point from the Monitoring page | PLC host |
+| 100308 / 100309 | 12 / 10 | OpenPLC user accounts changed / settings, hardware, slave devices or programs changed | PLC host |
+| 100351 | 10 | SCADA flows deployed (HMI logic changed) | SCADA |
+| 100352-100355 | 8 / 11 / 3 / 10 | Node-RED login failure / repeated failures / login / palette change | SCADA |
+| 100551 | 7 | Any watched file changed on an OT host (`ot-fim`) | OT hosts |
+| 100552 / 100553 | 12 / 10 | PLC program file / OpenPLC database changed | PLC host |
+| 100554 / 100555 | 12 / 12 | Firewall rules / diode code or key changed | `fw-l1`, historian |
+| 100556 / 100557 / 100559 | 10 / 9 / 10 | Node-RED flows or settings / systemd units / simulator or historian config changed | OT hosts |
+| 100558 | 12 | Logging configuration changed: possible attempt to blind the SOC (T1562.006) | OT hosts |
+| 100560 / 100569 | 12 / 12 | Sudo rights changed (`/etc/sudoers`, `sudoers.d`) / permissions or owner of an account file changed | OT hosts |
+| 100562 / 100563 / 100564 | 12 / 10 / 12 | User account created / deleted / modified (UID, GID, home, shell). One alert per account (T1136.001, T1531, T1098) | OT hosts |
+| 100565 | 14 | An account other than `root` has UID 0 | OT hosts |
+| 100566 / 100567 | 10 / 13 | Password changed, locked, unlocked or disabled / password removed (empty password) | OT hosts |
+| 100568 | 12 | User added to a privileged group (`sudo`, `root`, `adm`, `wheel`, `shadow`, `disk`) | OT hosts |
+| 100561 | 8 | Any other account change (group added or deleted, other membership changes) | OT hosts |
+| 100570-100573 | 12 / 10 / 10 / 9 | Wazuh FIM on the agents: diode, Grafana, mirror InfluxDB, systemd units | mirror, Grafana |
+| 100503 | 3 | Grafana login (if your Grafana version logs `Successful Login`) | Grafana |
 | 100401 | 12 | Forged or malformed datagram rejected by the diode receiver | mirror |
 | 100402 | 8 | Datagrams lost on the one-way link | mirror |
 | 100403 | 11 | Repeated link loss (3 gaps in 5 minutes) | mirror |
@@ -1159,7 +1214,7 @@ Custom IDs are in the 100100-100599 range and every rule is in group `ot_lab`.
 | 100501 | 8 | Grafana login failure | Grafana |
 | 100502 | 11 | 5 Grafana login failures in 2 minutes (password guessing) | Grafana |
 
-Lab status: 100100-100105 and 100199/100200 are confirmed with live events. The others were checked offline (XML and regex against sample lines) and should be confirmed with `wazuh-logtest`; the pfSense login rules (100220-100222) in particular depend on your pfSense version's wording.
+Lab status: confirmed with live events in the lab: Modbus blocks with the function code (100101, 100102), pfSense zone blocks (100200), OpenPLC web UI (100301-100305, 100310), Node-RED deploy (100351), `ot-fim` file changes (100554, 100555, 100556, 100558), account changes (100562, 100563, 100566, 100568), Wazuh FIM on the agents (100571) and Grafana login failure (100501). Not yet exercised with real events: the diode receiver and sender rules (1004xx), pfSense GUI logins (100220-100222), UID 0 and empty-password accounts (100565, 100567) and the remaining frequency rules; these were tested offline against sample lines.
 
 
 ---
@@ -1197,22 +1252,39 @@ No kernel modification or recompilation is needed. Only the `xt_u32` module must
 ```
 FORWARD (policy DROP)
  +-- tcp to PLC:502 --> MB_FILTER   (source gate)
- |                       +-- source = HMI or ENG  --> MB_POLICY
- |                       +-- anything else        --> MB_DROP (log + drop)
+ |                       +-- source = HMI (or ENG, if enabled) --> MB_POLICY
+ |                       +-- anything else                     --> MBD_SRC
  +-- tcp from PLC:502, established --> ACCEPT (replies)
  +-- tcp HMI -> HIST:8086            --> ACCEPT (historian writes)
  +-- tcp HIST:8086 -> HMI, established --> ACCEPT (replies)
- +-- anything else                   --> LOG "FW-DENY: " (rate limited), then policy DROP
+ +-- udp PLC host / HMI -> SOC:514   --> ACCEPT (one-way syslog)
+ +-- anything else                   --> NFLOG "FW-DENY: " (once per flow), then policy DROP
 
 MB_POLICY (function-code policy)
-  1. packet with no Modbus payload (SYN/ACK/FIN)        -> ACCEPT
-  2. FC08/0001, FC08/0004, FC08/000A, FC17, FC43        -> MB_DROP
-  3. writes FC 5, 6, 15, 16                             -> ACCEPT only from HMI
-  4. reads FC 1, 2, 3, 4                                -> ACCEPT from HMI and ENG
-  5. everything else                                    -> MB_DROP
+  1. packet with no Modbus payload (SYN/ACK/FIN)   -> ACCEPT
+  2. FC08/0001, FC08/0004, FC08/000A               -> MBD_08_0001, MBD_08_0004, MBD_08_000A
+     any other FC08, FC17, FC43                     -> MBD_08, MBD_17, MBD_43
+  3. writes FC 5, 6, 15, 16 from the HMI            -> ACCEPT
+     the same writes from anyone else               -> MBD_WR05, MBD_WR06, MBD_WR15, MBD_WR16
+  4. reads FC 1, 2, 3, 4 from the HMI (and ENG)     -> ACCEPT
+  5. everything else                                -> MBD_OTHER
 
-MB_DROP: log (prefix "MODBUS-BLOCK: ", rate limited) then DROP
+MBD_* (one chain per reason): NFLOG "MODBUS-BLOCK: FC=<code>:<name> " once per request, then DROP
 ```
+
+The tag in the log tells the SOC exactly what was refused:
+
+| Tag (`modbus_fc` in Wazuh) | Meaning |
+|---|---|
+| `08/0001:restart-comms` | FC08 sub-function 0001, restart communications |
+| `08/0004:force-listen-only` | FC08/0004, force the PLC into listen-only mode (it stops answering) |
+| `08/000A:clear-counters` | FC08/000A, clear diagnostic counters (hides evidence) |
+| `08:diagnostics-other` | Any other FC08 diagnostic |
+| `17:report-server-id` | FC17 (0x11), report server ID: device fingerprinting |
+| `43:read-device-id` | FC43 (0x2B), read device identification: fingerprinting |
+| `05/06/15/16:write-...-not-allowed` | A write from a host that may only read |
+| `other:not-in-allow-list` | Any function code not listed above |
+| `none:source-not-allowed` | The source may not talk to the PLC at all (dropped at the TCP handshake, before any function code is sent) |
 
 ### 7.4 Reading the block log
 
@@ -1225,10 +1297,10 @@ tail -f /var/log/ulog/syslogemu.log        # on fw-l1
 or in Wazuh under **Threat Hunting** (rule groups `ot_modbus_block` and `ot_cross_zone_deny`). A real line looks like this; note the **two spaces** after the prefix and the `MAC=` field, which the decoder must allow for:
 
 ```
-Nov 11 08:25:47 Debian-OT-Internal-FW MODBUS-BLOCK:  IN=eth1 OUT=eth0 MAC=bc:24:... SRC=192.168.72.10 DST=192.168.71.10 LEN=60 ... PROTO=TCP SPT=40396 DPT=502 ...
+Nov 11 08:25:47 Debian-OT-Internal-FW MODBUS-BLOCK: FC=08/0001:restart-comms  IN=eth1 OUT=eth0 MAC=bc:24:... SRC=192.168.72.10 DST=192.168.71.10 LEN=60 ... PROTO=TCP SPT=40396 DPT=502 ...
 ```
 
-A blocked request usually produces several log lines, because TCP retransmits the dropped segment. Count unique source ports (`SPT=`) to count attempts. Logging is rate limited (60 per minute, burst of 20) so a flood cannot fill the log.
+Each blocked attempt is logged **once**: `hashlimit` passes only the first dropped packet per source address and port in a minute to the log, so TCP retransmissions of the same request do not each raise an alert. A global limit (60 per minute, burst of 20) still caps a flood from many ports.
 
 `MODBUS-BLOCK` lines are dropped Modbus requests or sources. `FW-DENY` lines are any other attempt to cross zones, for example L1 trying to reach the historian.
 
@@ -1262,6 +1334,18 @@ Properties worth demonstrating:
 **One-way logging from OT.** OT hosts (`fw-l1`, the historian) and pfSense send plain UDP syslog to Wazuh and never receive anything, matching the diode policy. Only IT-side hosts (mirror, Grafana) run Wazuh agents, which need a two-way TCP session. The price is that syslog is unauthenticated (see [section 11](#11-security-notes-and-known-limitations)).
 
 **Firewall logs: NFLOG instead of LOG.** A container's `LOG` target writes to the host kernel log, where no in-container shipper can see it. `NFLOG` hands the packets to `ulogd2` inside `fw-l1`, which writes a file that rsyslog forwards with a fixed tag. The tag must end with a colon (`fw-l1-nflog:`), otherwise the Wazuh pre-decoder cannot find the program name.
+
+**Why the firewall needs three pieces (iptables NFLOG, ulogd2, rsyslog).** Each does a different job, and a container cannot skip any of them:
+
+| Piece | Job | Why it is needed |
+|---|---|---|
+| `NFLOG` target in iptables | *Produce* the event: the kernel decides to drop a packet | The decision is made inside the kernel, which has no files and no network client of its own. `LOG` would write to the kernel ring buffer, which belongs to the Proxmox host, not to the container |
+| `ulogd2` | *Receive and format* it: reads NFLOG messages over netlink inside the container's own network namespace and writes text lines | Something in user space must listen on the netlink socket and turn packet headers into `SRC=... DST=... DPT=502` text |
+| `rsyslog` | *Transport* it: tails the file and sends each line one way over UDP to Wazuh | Same shipper as on every other OT host, so all OT logs arrive in one format |
+
+OpenPLC, Node-RED and the diode sender need only rsyslog: they already write to the systemd journal, and rsyslog reads the journal (`imjournal`) and forwards. The three-part chain is only for the firewall, because its events start in the kernel.
+
+**How field decoders must be written.** Reading Wazuh's `decoders/decoder.c` showed two rules that the documentation does not make obvious. Under one parent decoder, only the **first** child without a `<prematch>` is used, and if its regex does not match, decoding stops; a second child with a different name is never tried. The exception is **sibling decoders**: children with the *same* name are all tried in turn, and each adds its fields. Also, the field list ends at the first capture group that did not take part in the match, so optional groups silently drop every field after them. The lab's decoders therefore use one group of same-named children per parent, one small regex per group of fields, and no optional capture groups. An earlier version had `...-ports` and `...-noports` children; with those, ICMP blocks and diode sequence gaps lost their fields.
 
 **pfSense sends no hostname.** Its BSD-format lines are `Nov 11 09:15:54 filterlog[33080]: 1,96,...`. Wazuh's pre-decoder expects `timestamp hostname program:`. A hostname may not contain `[`, so the pre-decoder leaves the text unchanged, sets no program name, and Wazuh's built-in `pf` decoder (which keys on `program_name` `filterlog`) never matches. The lab's `pf-nohost` decoder matches the comma-separated body, with or without the leading `filterlog[pid]: `, and rule 100199 is its base. The zone rules 100200-100209 hang off both 100199 and Wazuh's own 87701, so they also work if pfSense ever sends a hostname. Switching pfSense to RFC 5424 does not help, because the pre-decoder does not parse that header either.
 
@@ -1349,6 +1433,12 @@ Open **Threat Hunting** in the Wazuh dashboard and filter on `rule.groups: ot_la
 | Forged datagram (Step 15) | mirror | 100401 |
 | Disable the pfSense UDP rule for 30 s | pfSense | 100402 when the link resumes |
 | Wrong password five times on Grafana | browser | 100501, then 100502 |
+| Log in to OpenPLC, press **Stop PLC** | browser | 100301, then 100304 (level 12) |
+| Upload a program in OpenPLC | browser | 100306, plus 100552 from `ot-fim` |
+| Deploy in the Node-RED editor | browser | 100351, plus 100556 from `ot-fim` |
+| `echo "# test" >> /root/fw_ot.sh` | `fw-l1` | 100554 |
+| `useradd testfim`, then `passwd testfim`, `usermod -aG sudo testfim`, `userdel testfim` | any OT host | 100562, 100566, 100568, 100563: one alert each |
+| `touch /etc/grafana/grafana.ini` (permissions/mtime) or edit a dashboard JSON | `grafana-it` | 100571 |
 
 Every alert carries the source and destination, so a sequence such as "IT host probes OT (100202), then the HMI sends a blocked function code (100101)" can be shown as one timeline, which is the point of keeping all clocks in UTC (Step 20).
 
@@ -1376,6 +1466,7 @@ The code lives in the repository; this table maps each component to its file.
 | Diode systemd units | [`diode/systemd/`](../diode/systemd/) |
 | Diode environment examples | [`diode/env/`](../diode/env/) |
 | OT routes to DMZ and SOC | [`network/dmz-route.service`](../network/dmz-route.service) |
+| Wazuh agent FIM (manager side) | [`wazuh/agent.conf`](../wazuh/agent.conf) |
 | Lab health check | [`tests/lab_health.sh`](../tests/lab_health.sh) |
 | IT dashboard | [`grafana/dc_it_dashboard.json`](../grafana/dc_it_dashboard.json) |
 
@@ -1393,7 +1484,7 @@ The code lives in the repository; this table maps each component to its file.
 | `sysctl: permission denied on key kernel.pid_max` | Unprivileged container cannot set host kernel keys | Ignore. Check `cat /proc/sys/net/ipv4/ip_forward` shows 1 |
 | Dashboard gauges empty, PLC link `LOST` | No route, PLC stopped, or the firewall dropping reads | Check the Modbus node status; `nc -zv 192.168.71.10 502` from `debian-L2`; check both gateways; `iptables -L MB_POLICY -n -v` on `fw-l1` |
 | Returning traffic fails when a host has two NICs | Replies leave through the management NIC instead of the firewall | Add a static route for the other zone via the firewall on both hosts, for example `ip route add 192.168.72.0/24 via 192.168.71.2` |
-| No `MODBUS-BLOCK` log lines | The NFLOG modules are not loaded on the host, `ulogd2` is not running, or the rules still use `LOG` | On the host `lsmod \| grep -i nflog`; on `fw-l1` `systemctl status ulogd2`, `iptables -L MB_DROP -n` (target must be `NFLOG`) and `tail /var/log/ulog/syslogemu.log` |
+| No `MODBUS-BLOCK` log lines | The NFLOG or hashlimit modules are not loaded on the host, `ulogd2` is not running, or old rules are loaded | On the host `lsmod \| grep -E 'nflog\|hashlimit'`; on `fw-l1` `systemctl status ulogd2`, `iptables -S \| grep MODBUS-BLOCK` (must show `NFLOG ... FC=`) and `tail /var/log/ulog/syslogemu.log` |
 | Everything between zones stops after running `fw_ot.sh`; `iptables -L FORWARD` is empty with policy `DROP` | The script stopped partway (it fails closed). The `FAILED at line ...` message names the command | Load the missing module on the **Proxmox host** (`modprobe xt_u32 nft_compat xt_LOG nf_log_syslog xt_limit nf_conntrack xt_conntrack`) and run the script again. To restore connectivity meanwhile: `iptables -F FORWARD && iptables -P FORWARD ACCEPT` |
 | `iptables` fails on a `u32` line | `xt_u32` / `nft_compat` not loaded on the host | `modprobe xt_u32 nft_compat` on the Proxmox host |
 | `iptables` returns `Permission denied` in the container | Unprivileged container lacks the capability on your kernel | Recreate `fw-l1` as privileged (`--unprivileged 0`) |
@@ -1422,7 +1513,7 @@ The code lives in the repository; this table maps each component to its file.
 | Link status shows `STALE` while data looks fine | The statistics point is older than 15 s, for example the receiver stopped or the stats interval was raised | `systemctl status diode-recv` on the mirror. The receiver writes statistics every 5 s by default |
 | A temperature panel is empty but the link is live | The Node-RED historian branch is not writing | Check `Historian link` on the SCADA page and the historian bucket |
 | `pkill -f` kills your own shell | The pattern matches your own command line | Use `pgrep -x <name>` or PID files |
-| Grafana and the SCADA dashboard suddenly show no data after host or container reboots (run `tests/lab_health.sh`) | OpenPLC came back stopped, so Node-RED has nothing to poll and the historian receives nothing (the diode keeps sending empty heartbeats, so the link looks healthy) | Open the OpenPLC web UI and press **Start PLC**; tick **Settings > Start OpenPLC in RUN mode**. Also check the simulator is listening (`ss -tlnp \| grep 5020`) and the firewall rules came back (`iptables -L MB_DROP -n`) |
+| Grafana and the SCADA dashboard suddenly show no data after host or container reboots (run `tests/lab_health.sh`) | OpenPLC came back stopped, so Node-RED has nothing to poll and the historian receives nothing (the diode keeps sending empty heartbeats, so the link looks healthy) | Open the OpenPLC web UI and press **Start PLC**; tick **Settings > Start OpenPLC in RUN mode**. Also check the simulator is listening (`ss -tlnp \| grep 5020`) and the firewall rules came back (`iptables -S \| grep MODBUS-BLOCK`) |
 | rsyslog logs `parameter 'Ruleset' not known` for `60-wazuh.conf` | rsyslog 8.2302 (Debian 12) does not accept `Ruleset` on the `imjournal` module line | Use the current `setup_log_forwarding.sh` (filter in the default ruleset) and re-run it; `rsyslogd -N1` must report no errors |
 | Syslog reaches the Wazuh VM (`tcpdump` shows it) but nothing is in `archives.log` | The source address is not in `<allowed-ips>` (pfSense sends from `192.168.76.2`, not its OT address) | Check the source with `tcpdump -nn udp port 514`, add it to the syslog `<remote>` block and restart the manager |
 | `fw-l1` events arrive but no alert fires | The decoder pattern expects one space after `MODBUS-BLOCK:`; ulogd writes two, plus a `MAC=` field | Use the current `ot_lab_decoders.xml` (`:\s+IN=`) |
@@ -1432,6 +1523,7 @@ The code lives in the repository; this table maps each component to its file.
 | HMI Modbus blocks sometimes show as 100105 "unauthorised host" | Older rules: frequency-rule fallback to a level-ordered parent (see 7.7) | Use the current `ot_lab_rules.xml` (`grep -c 'negate="yes"' /var/ossec/etc/rules/ot_lab_rules.xml` prints 1) |
 | `FW-DENY` lines for historian traffic to `192.168.76.10` or to the internet | The historian has no route to the SOC via pfSense (it hairpins through `fw-l1`), or a temporary NIC is still configured | Add `192.168.76.0/24 via 192.168.73.3` (Step 17) and remove temporary NICs |
 | A pfSense block from `0.0.0.0` to `255.255.255.255` (UDP 68 to 67) appears every minute | A guest on that segment has a NIC set to DHCP; pfSense runs no DHCP server there, so the client retries forever and the default block rule logs each try | Rule 100198 silences it in Wazuh. Find the guest: the `vtnetN` in the log is the pfSense interface (**Interfaces > Assignments**), and **Diagnostics > Packet Capture** on it, port 67, shows the client's MAC. Give that NIC a static address or remove it |
+| OpenPLC failed logins reach Wazuh, but successful logins, PLC start/stop and logouts never do (they are in `journalctl -u openplc`) | Werkzeug colours every non-200 request line with ANSI escape codes; journald stores those lines as binary and does not pass them to rsyslog. Only uncoloured 200 lines get through | The `plc` role adds one line to `webserver.py` that switches the colours off (`werkzeug.serving._log_add_style = False`, original kept as `webserver.py.orig`) and restarts OpenPLC |
 | `chronyc sources` shows `#? PHC0` with Reach 0 | chrony has only just started | Wait 15 s; it should show `#* PHC0` |
 
 ---

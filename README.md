@@ -60,7 +60,7 @@ OT hosts only ever **send** to IT (UDP data and UDP syslog). Agents run only on 
 | Level | Status |
 |---|---|
 | L0 to L4 | Built and verified in the lab |
-| L5 Wazuh | Built. Modbus-block and pfSense detections confirmed with live events; diode, Grafana and pfSense-login rules validated offline |
+| L5 Wazuh | Built. Confirmed with live events: Modbus blocks (with function code), pfSense zone blocks, OpenPLC web UI, Node-RED deploys, file integrity and account changes on OT hosts, Wazuh FIM on the agents, Grafana login failures. Diode and pfSense-login rules validated offline |
 | Ops | Reboot resilience and a one-command health check (`tests/lab_health.sh`) |
 | Next | Suricata/Zeek with a Modbus parser, a Kali attacker VM |
 
@@ -112,7 +112,8 @@ Requirements: Proxmox VE 8 (one node works; two nodes are used here), a Debian 1
 │   ├── setup_grafana.sh            L4 Grafana install and provisioning
 │   └── dc_it_dashboard.json        IT dashboard incl. one-way link health
 ├── wazuh/
-│   ├── setup_log_forwarding.sh     per-host log forwarding (fw-l1, historian, mirror, grafana)
+│   ├── setup_log_forwarding.sh     per-host log forwarding + OT file integrity (plc, scada, fw-l1, historian, mirror, grafana)
+│   ├── agent.conf                  Wazuh FIM for the IT-side agents (install on the manager)
 │   ├── ot_lab_decoders.xml         custom decoders
 │   └── ot_lab_rules.xml            custom rules 100100-100599
 └── tests/
@@ -130,6 +131,9 @@ Requirements: Proxmox VE 8 (one node works; two nodes are used here), a Debian 1
 | 100201 / 100202 | 12 / 10 | DMZ or IT host trying to reach OT |
 | 100401 | 12 | Forged or malformed datagram at the diode receiver |
 | 100402 / 100403 | 8 / 11 | Loss on the one-way link |
+| 100304 / 100306 / 100307 | 12 | PLC stopped, program changed, or a value forced from the OpenPLC web UI |
+| 100351 | 10 | SCADA (Node-RED) flows deployed |
+| 100552-100558 | 9-12 | File integrity on OT hosts: PLC programs, firewall rules, diode key, logging config |
 
 The full rule map is in [docs/GUIDE.md](docs/GUIDE.md#69-soc-detections-wazuh-rule-map).
 

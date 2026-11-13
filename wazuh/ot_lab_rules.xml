@@ -23,7 +23,7 @@
     <if_sid>100100</if_sid>
     <action>MODBUS-BLOCK</action>
     <match>SRC=192.168.72.10 </match>
-    <description>Dangerous Modbus request from the HMI $(srcip) to $(dstip):$(dstport) blocked by fw-l1.</description>
+    <description>Modbus function $(modbus_fc) from the HMI $(srcip) to $(dstip):$(dstport) blocked by fw-l1.</description>
     <group>ot_modbus_block,</group>
   </rule>
 
@@ -31,7 +31,7 @@
     <if_sid>100100</if_sid>
     <action>MODBUS-BLOCK</action>
     <match negate="yes">SRC=192.168.72.10 </match>
-    <description>Modbus traffic to the PLC from unauthorised host $(srcip) blocked by fw-l1.</description>
+    <description>Modbus traffic to the PLC from unauthorised host $(srcip) blocked by fw-l1 ($(modbus_fc)).</description>
     <group>ot_modbus_block,ot_unauthorised_source,</group>
   </rule>
 
@@ -128,11 +128,11 @@
     <group>ot_pfsense,ot_diode_violation,ot_attack,</group>
   </rule>
 
-  <!-- pfSense web login (adjust the wording to your pfSense version with wazuh-logtest) -->
+  <!-- pfSense web GUI logins (decoder pf-gui-nohost). Needs "General Authentication Events" in pfSense remote logging. -->
   <rule id="100220" level="8">
-    <program_name>^php-fpm|^php</program_name>
-    <regex type="pcre2">(?i)authentication error|failed login</regex>
-    <description>pfSense web interface login failure.</description>
+    <decoded_as>pf-gui-nohost</decoded_as>
+    <match>webConfigurator authentication error</match>
+    <description>pfSense web interface login failure for user $(dstuser) from $(srcip).</description>
     <mitre>
       <id>T1110</id>
     </mitre>
@@ -140,19 +140,153 @@
   </rule>
 
   <rule id="100221" level="5">
-    <program_name>^php-fpm|^php</program_name>
-    <regex type="pcre2">(?i)successful login</regex>
-    <description>pfSense web interface login.</description>
+    <decoded_as>pf-gui-nohost</decoded_as>
+    <match>Successful login for user</match>
+    <description>pfSense web interface login by $(dstuser) from $(srcip).</description>
     <group>ot_pfsense,authentication_success,</group>
   </rule>
 
   <rule id="100222" level="11" frequency="5" timeframe="120" ignore="300">
     <if_matched_sid>100220</if_matched_sid>
-    <description>Multiple pfSense web login failures.</description>
+    <same_source_ip />
+    <description>Multiple pfSense web login failures from $(srcip).</description>
     <mitre>
       <id>T1110</id>
     </mitre>
     <group>ot_pfsense,authentication_failures,</group>
+  </rule>
+
+  <!-- ================= OpenPLC web UI (PLC host) =================
+       Unauthenticated requests to the admin pages are redirected to the login page, but are still logged,
+       so these rules fire on attempts as well as on real actions. -->
+  <rule id="100300" level="0">
+    <decoded_as>openplc</decoded_as>
+    <description>OpenPLC log.</description>
+    <group>ot_openplc,</group>
+  </rule>
+
+  <rule id="100301" level="3">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"POST /login HTTP/[\d.]+" 302</regex>
+    <description>OpenPLC web login from $(srcip).</description>
+    <group>ot_openplc,authentication_success,</group>
+  </rule>
+
+  <rule id="100302" level="8">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"POST /login HTTP/[\d.]+" 200</regex>
+    <description>OpenPLC web login failure from $(srcip).</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>ot_openplc,authentication_failed,</group>
+  </rule>
+
+  <rule id="100303" level="11" frequency="5" timeframe="120" ignore="300">
+    <if_matched_sid>100302</if_matched_sid>
+    <same_source_ip />
+    <description>Multiple OpenPLC login failures from $(srcip): possible password guessing on the PLC.</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>ot_openplc,authentication_failures,ot_attack,</group>
+  </rule>
+
+  <rule id="100304" level="12">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"GET /stop_plc[ ?]</regex>
+    <description>PLC STOP requested from the OpenPLC web UI by $(srcip): the HVAC control program halts.</description>
+    <group>ot_openplc,ot_plc_state,</group>
+  </rule>
+
+  <rule id="100305" level="8">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"GET /start_plc[ ?]</regex>
+    <description>PLC START requested from the OpenPLC web UI by $(srcip).</description>
+    <group>ot_openplc,ot_plc_state,</group>
+  </rule>
+
+  <rule id="100306" level="12">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"(?:GET|POST) /(?:upload-program-action|update-program-action|compile-program)[ ?]|"POST /reload-program[ ?]</regex>
+    <description>PLC program uploaded, changed or compiled from the OpenPLC web UI by $(srcip).</description>
+    <group>ot_openplc,ot_plc_program,</group>
+  </rule>
+
+  <rule id="100307" level="12">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"(?:GET|POST) /point-write[ ?]</regex>
+    <description>Value forced on a PLC point from the OpenPLC Monitoring page by $(srcip).</description>
+    <group>ot_openplc,ot_plc_write,</group>
+  </rule>
+
+  <rule id="100308" level="12">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"POST /(?:add-user|edit-user)[ ?]|"(?:GET|POST) /delete-user[ ?]</regex>
+    <description>OpenPLC user account added, changed or deleted from $(srcip).</description>
+    <group>ot_openplc,account_changed,</group>
+  </rule>
+
+  <rule id="100309" level="10">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"POST /(?:settings|hardware|add-modbus-device|modbus-edit-device)[ ?]|"(?:GET|POST) /(?:delete-device|remove-program)[ ?]|"GET /restore_custom_hardware</regex>
+    <description>OpenPLC configuration changed (settings, hardware layer, slave devices or programs) from $(srcip).</description>
+    <group>ot_openplc,ot_plc_config,</group>
+  </rule>
+
+  <rule id="100310" level="3">
+    <if_sid>100300</if_sid>
+    <regex type="pcre2">"GET /logout[ ?]</regex>
+    <description>OpenPLC web logout from $(srcip).</description>
+    <group>ot_openplc,</group>
+  </rule>
+
+  <!-- ================= Node-RED SCADA (audit log) ================= -->
+  <rule id="100350" level="0">
+    <decoded_as>node-red</decoded_as>
+    <description>Node-RED log.</description>
+    <group>ot_scada,</group>
+  </rule>
+
+  <rule id="100351" level="10">
+    <if_sid>100350</if_sid>
+    <regex type="pcre2">\[audit\] \{"event":"flows\.set"</regex>
+    <description>SCADA flows deployed (HMI logic changed) from $(srcip).</description>
+    <group>ot_scada,ot_scada_change,</group>
+  </rule>
+
+  <rule id="100352" level="8">
+    <if_sid>100350</if_sid>
+    <regex type="pcre2">\[audit\] \{"event":"auth\.login\.fail</regex>
+    <description>Node-RED editor login failure from $(srcip).</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>ot_scada,authentication_failed,</group>
+  </rule>
+
+  <rule id="100353" level="11" frequency="5" timeframe="120" ignore="300">
+    <if_matched_sid>100352</if_matched_sid>
+    <same_source_ip />
+    <description>Multiple Node-RED login failures from $(srcip): possible password guessing on the SCADA.</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>ot_scada,authentication_failures,ot_attack,</group>
+  </rule>
+
+  <rule id="100354" level="3">
+    <if_sid>100350</if_sid>
+    <regex type="pcre2">\[audit\] \{"event":"auth\.login"</regex>
+    <description>Node-RED editor login by $(dstuser) from $(srcip).</description>
+    <group>ot_scada,authentication_success,</group>
+  </rule>
+
+  <rule id="100355" level="10">
+    <if_sid>100350</if_sid>
+    <regex type="pcre2">\[audit\] \{"event":"nodes\.(?:install|remove|module\.set|set)"</regex>
+    <description>Node-RED palette changed (nodes installed, removed or enabled) from $(srcip).</description>
+    <group>ot_scada,ot_scada_change,</group>
   </rule>
 
   <!-- ================= diode receiver (mirror-dmz) ================= -->
@@ -226,7 +360,7 @@
 
   <rule id="100501" level="8">
     <if_sid>100500</if_sid>
-    <regex type="pcre2">Invalid username or password|client=auth\.client\.form.*level=(?:warn|error)|level=(?:warn|error).*client=auth\.client\.form</regex>
+    <regex type="pcre2">Invalid username or password|path=/login status=401|client=auth\.client\.form.*level=(?:warn|error)|level=(?:warn|error).*client=auth\.client\.form</regex>
     <description>Grafana login failure from $(srcip).</description>
     <mitre>
       <id>T1110</id>
@@ -242,6 +376,217 @@
       <id>T1110</id>
     </mitre>
     <group>ot_grafana,authentication_failures,</group>
+  </rule>
+
+
+  <rule id="100503" level="3">
+    <if_sid>100500</if_sid>
+    <match>msg="Successful Login"</match>
+    <description>Grafana login.</description>
+    <group>ot_grafana,authentication_success,</group>
+  </rule>
+
+  <!-- ================= ot-fim: file integrity on OT hosts (no agent) =================
+       100550 base, 100551 generic change; the path-specific rules below have higher levels and win. -->
+  <rule id="100550" level="0">
+    <decoded_as>ot-fim</decoded_as>
+    <description>OT file integrity monitor log.</description>
+    <group>ot_fim,</group>
+  </rule>
+
+  <rule id="100551" level="7">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=</regex>
+    <description>File $(fim_action) on an OT host: $(fim_path).</description>
+    <group>ot_fim,</group>
+  </rule>
+
+  <rule id="100552" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=\S*/(?:st_files/|active_program )</regex>
+    <description>PLC program file $(fim_action): $(fim_path).</description>
+    <group>ot_fim,ot_plc_program,</group>
+  </rule>
+
+  <rule id="100553" level="10">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=\S*/(?:openplc\.db|mbconfig\.cfg) </regex>
+    <description>OpenPLC configuration database $(fim_action) (users, settings or slave devices).</description>
+    <group>ot_fim,ot_plc_config,</group>
+  </rule>
+
+  <rule id="100554" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=(?:/etc/iptables/|/root/fw_ot\.sh )</regex>
+    <description>OT firewall rules $(fim_action): $(fim_path).</description>
+    <group>ot_fim,ot_fw_change,</group>
+  </rule>
+
+  <rule id="100555" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=/(?:etc|opt)/diode/</regex>
+    <description>One-way link (diode) code or key $(fim_action): $(fim_path).</description>
+    <group>ot_fim,ot_diode,</group>
+  </rule>
+
+  <rule id="100556" level="10">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=\S*/\.node-red/(?:flows[^/ ]*\.json|settings\.js|package\.json) </regex>
+    <description>SCADA (Node-RED) flows or settings file $(fim_action): $(fim_path).</description>
+    <group>ot_fim,ot_scada_change,</group>
+  </rule>
+
+  <rule id="100557" level="9">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=/etc/systemd/system/</regex>
+    <description>Service definition $(fim_action) on an OT host: $(fim_path).</description>
+    <group>ot_fim,</group>
+  </rule>
+
+  <rule id="100558" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=(?:/etc/rsyslog\.d/|/etc/rsyslog\.conf |/etc/ulogd\.conf |/usr/local/sbin/ot-fim )</regex>
+    <description>Logging configuration $(fim_action): possible attempt to blind the SOC.</description>
+    <mitre>
+      <id>T1562.006</id>
+    </mitre>
+    <group>ot_fim,ot_attack,</group>
+  </rule>
+
+  <rule id="100559" level="10">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=/(?:opt/dcsim|etc/influxdb)/</regex>
+    <description>Process simulator or historian configuration $(fim_action): $(fim_path).</description>
+    <group>ot_fim,</group>
+  </rule>
+
+  <rule id="100560" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM (?:change|delete) path=(?:/etc/sudoers |/etc/sudoers\.d/)</regex>
+    <description>Sudo rights changed on an OT host: $(fim_path).</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+    <group>ot_fim,account_changed,</group>
+  </rule>
+
+  <rule id="100569" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^FIM change path=/etc/(?:passwd|shadow|group|gshadow) </regex>
+    <description>Permissions or owner of an account file changed on an OT host: $(fim_path) is now $(fim_mode) $(fim_owner).</description>
+    <group>ot_fim,account_changed,</group>
+  </rule>
+
+  <!-- ================= ot-fim: account changes on OT hosts =================
+       ot-fim compares users, passwords and groups after every change to /etc/passwd, shadow or group and writes
+       ONE line per difference, so there is one alert per change and nothing is folded away by a time window.
+       100561 is the fallback; the rules after it are more specific and have higher levels. -->
+  <rule id="100561" level="8">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^ACCOUNT </regex>
+    <description>Account database changed on an OT host: $(account_event) $(account_name) $(account_detail).</description>
+    <group>ot_account,account_changed,</group>
+  </rule>
+
+  <rule id="100562" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^ACCOUNT user-added </regex>
+    <description>New user account $(account_name) created on an OT host ($(account_detail)).</description>
+    <mitre>
+      <id>T1136.001</id>
+    </mitre>
+    <group>ot_account,account_changed,adduser,</group>
+  </rule>
+
+  <rule id="100563" level="10">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^ACCOUNT user-deleted </regex>
+    <description>User account $(account_name) deleted on an OT host.</description>
+    <mitre>
+      <id>T1531</id>
+    </mitre>
+    <group>ot_account,account_changed,</group>
+  </rule>
+
+  <rule id="100564" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^ACCOUNT user-modified </regex>
+    <description>User account $(account_name) modified on an OT host: $(account_detail).</description>
+    <mitre>
+      <id>T1098</id>
+    </mitre>
+    <group>ot_account,account_changed,</group>
+  </rule>
+
+  <rule id="100565" level="14">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^ACCOUNT user-(?:added|modified) name=(?!root )\S+ .*\buid=(?:\d+->)?0(?: |$)</regex>
+    <description>Account $(account_name) on an OT host now has UID 0 (root-equivalent): $(account_detail).</description>
+    <mitre>
+      <id>T1136.001</id>
+      <id>T1098</id>
+    </mitre>
+    <group>ot_account,account_changed,ot_attack,</group>
+  </rule>
+
+  <rule id="100566" level="10">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^ACCOUNT password-(?:changed|locked|unlocked|disabled) </regex>
+    <description>Password state of $(account_name) changed on an OT host: $(account_event).</description>
+    <mitre>
+      <id>T1098</id>
+    </mitre>
+    <group>ot_account,account_changed,</group>
+  </rule>
+
+  <rule id="100567" level="13">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^ACCOUNT password-removed </regex>
+    <description>Account $(account_name) on an OT host now has an EMPTY password.</description>
+    <mitre>
+      <id>T1098</id>
+    </mitre>
+    <group>ot_account,account_changed,ot_attack,</group>
+  </rule>
+
+  <rule id="100568" level="12">
+    <if_sid>100550</if_sid>
+    <regex type="pcre2">^ACCOUNT group-members-changed name=(?:sudo|root|adm|wheel|shadow|disk) added=[^- ]</regex>
+    <description>User added to the privileged group $(account_name) on an OT host: $(account_detail).</description>
+    <mitre>
+      <id>T1098</id>
+    </mitre>
+    <group>ot_account,account_changed,ot_attack,</group>
+  </rule>
+
+  <!-- ================= Wazuh FIM on the IT-side agents (agent.conf) =================
+       Children of Wazuh's syscheck rules 550 (modified), 553 (deleted) and 554 (added). -->
+  <rule id="100570" level="12">
+    <if_sid>550, 553, 554</if_sid>
+    <field name="file" type="pcre2">^/(?:etc|opt)/diode/</field>
+    <description>One-way link (diode) code or key changed on an IT-side host.</description>
+    <group>ot_fim,ot_diode,</group>
+  </rule>
+
+  <rule id="100571" level="10">
+    <if_sid>550, 553, 554</if_sid>
+    <field name="file" type="pcre2">^/etc/grafana/|^/var/lib/grafana/dashboards/|^/etc/default/grafana-server</field>
+    <description>Grafana configuration, provisioning or dashboard file changed.</description>
+    <group>ot_fim,ot_grafana,</group>
+  </rule>
+
+  <rule id="100572" level="10">
+    <if_sid>550, 553, 554</if_sid>
+    <field name="file" type="pcre2">^/etc/influxdb/</field>
+    <description>Mirror InfluxDB configuration changed.</description>
+    <group>ot_fim,</group>
+  </rule>
+
+  <rule id="100573" level="9">
+    <if_sid>550, 553, 554</if_sid>
+    <field name="file" type="pcre2">^/etc/systemd/system/</field>
+    <description>Service definition changed on an IT-side lab host.</description>
+    <group>ot_fim,</group>
   </rule>
 
 </group>

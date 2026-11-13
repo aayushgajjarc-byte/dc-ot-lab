@@ -44,7 +44,7 @@ if here "$FW_CT"; then
   echo "-- fw-l1 (CT $FW_CT)"
   check "$FW_CT" "IP forwarding on" "sysctl -w net.ipv4.ip_forward=1" "[ \$(cat /proc/sys/net/ipv4/ip_forward) = 1 ]"
   check "$FW_CT" "Modbus DPI rules loaded (MB_POLICY chain)" "bash /root/fw_ot.sh && netfilter-persistent save" "iptables -L MB_POLICY -n | grep -q u32"
-  check "$FW_CT" "drop rules log with NFLOG" "re-run the current fw_ot.sh; host needs nfnetlink_log xt_NFLOG" "iptables -L MB_DROP -n | grep -q NFLOG"
+  check "$FW_CT" "drop rules log with NFLOG (per function code)" "re-run the current fw_ot.sh; host needs nfnetlink_log xt_NFLOG xt_hashlimit" "iptables -S | grep -q 'NFLOG.*MODBUS-BLOCK: FC='"
   check "$FW_CT" "ulogd2 active" "systemctl enable --now ulogd2" "systemctl is-active -q ulogd2"
   check "$FW_CT" "rsyslog active" "systemctl enable --now rsyslog" "systemctl is-active -q rsyslog"
   check "$FW_CT" "route to SOC via pfSense" "systemctl enable --now dmz-route" "ip route get 192.168.76.10 | grep -q 'via 192.168.73.3'"
