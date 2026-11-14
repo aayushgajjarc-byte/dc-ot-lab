@@ -589,4 +589,17 @@
     <group>ot_fim,</group>
   </rule>
 
+
+  <!-- ================= known-good LXC artefacts =================
+       LXC creates /dev/.lxc-boot-id and the /dev/.lxc/ tree (proc and sys mounts used by the container runtime)
+       in every container. Wazuh rootcheck (rule 510) reports every hidden file in /dev as "possible hidden file",
+       so each container agent raises dozens of alerts on every scan. Silence exactly these LXC paths; every
+       other rootcheck finding, including any other hidden file in /dev, still alerts. -->
+  <rule id="100574" level="0">
+    <if_sid>510</if_sid>
+    <field name="file" type="pcre2">^/dev/\.lxc(?:-boot-id|/.*)?$</field>
+    <description>Rootcheck: LXC runtime file in /dev (expected in a container).</description>
+    <group>ot_lab_tuning,</group>
+  </rule>
+
 </group>

@@ -1205,6 +1205,7 @@ Custom IDs are in the 100100-100599 range and every rule is in group `ot_lab`.
 | 100568 | 12 | User added to a privileged group (`sudo`, `root`, `adm`, `wheel`, `shadow`, `disk`) | OT hosts |
 | 100561 | 8 | Any other account change (group added or deleted, other membership changes) | OT hosts |
 | 100570-100573 | 12 / 10 / 10 / 9 | Wazuh FIM on the agents: diode, Grafana, mirror InfluxDB, systemd units | mirror, Grafana |
+| 100574 | 0 | Silences rootcheck "possible hidden file" findings (rule 510) for the LXC runtime paths `/dev/.lxc-boot-id` and `/dev/.lxc/...`, which exist in every container | mirror, Grafana |
 | 100503 | 3 | Grafana login (if your Grafana version logs `Successful Login`) | Grafana |
 | 100401 | 12 | Forged or malformed datagram rejected by the diode receiver | mirror |
 | 100402 | 8 | Datagrams lost on the one-way link | mirror |
@@ -1524,6 +1525,7 @@ The code lives in the repository; this table maps each component to its file.
 | `FW-DENY` lines for historian traffic to `192.168.76.10` or to the internet | The historian has no route to the SOC via pfSense (it hairpins through `fw-l1`), or a temporary NIC is still configured | Add `192.168.76.0/24 via 192.168.73.3` (Step 17) and remove temporary NICs |
 | A pfSense block from `0.0.0.0` to `255.255.255.255` (UDP 68 to 67) appears every minute | A guest on that segment has a NIC set to DHCP; pfSense runs no DHCP server there, so the client retries forever and the default block rule logs each try | Rule 100198 silences it in Wazuh. Find the guest: the `vtnetN` in the log is the pfSense interface (**Interfaces > Assignments**), and **Diagnostics > Packet Capture** on it, port 67, shows the client's MAC. Give that NIC a static address or remove it |
 | OpenPLC failed logins reach Wazuh, but successful logins, PLC start/stop and logouts never do (they are in `journalctl -u openplc`) | Werkzeug colours every non-200 request line with ANSI escape codes; journald stores those lines as binary and does not pass them to rsyslog. Only uncoloured 200 lines get through | The `plc` role adds one line to `webserver.py` that switches the colours off (`werkzeug.serving._log_add_style = False`, original kept as `webserver.py.orig`) and restarts OpenPLC |
+| Dozens of rootcheck rule 510 alerts "File '/dev/.lxc-boot-id'" or "'/dev/.lxc/proc/...' present on /dev. Possible hidden file." on every scan of the container agents | LXC creates `/dev/.lxc-boot-id` and the `/dev/.lxc/` tree in every container; rootcheck treats any hidden file in `/dev` as suspicious | Rule 100574 silences exactly these LXC paths. Any other hidden file in `/dev` still alerts. Trade-off: a file an attacker hides inside `/dev/.lxc/` would not be reported by rootcheck |
 | `chronyc sources` shows `#? PHC0` with Reach 0 | chrony has only just started | Wait 15 s; it should show `#* PHC0` |
 
 ---
